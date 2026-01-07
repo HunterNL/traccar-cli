@@ -1,4 +1,4 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 
 use geo::Point;
 use serde::Deserialize;
@@ -19,16 +19,25 @@ struct LandmarkConfigLocation {
     lng: f64,
 }
 
+#[derive(Debug)]
 pub struct AppConfig {
     landmarks: Vec<Landmark>,
     host: String,
     token: String,
+    devices: HashMap<u32, DeviceConfig>,
 }
 
 #[derive(Deserialize)]
 pub struct ConfigFile {
     host: String,
     token: String,
+    devices: Option<HashMap<u32, DeviceConfig>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeviceConfig {
+    pub display_name: Option<String>,
+    pub report_timeout_seconds: Option<u32>,
 }
 
 impl AppConfig {
@@ -40,6 +49,9 @@ impl AppConfig {
     }
     pub fn token(&self) -> &str {
         self.token.as_str()
+    }
+    pub fn device_config(&self, id: u32) -> Option<&DeviceConfig> {
+        self.devices.get(&id)
     }
 }
 
@@ -67,6 +79,7 @@ pub fn config_get() -> AppConfig {
     };
 
     AppConfig {
+        devices: config_file.devices.unwrap_or_default(),
         landmarks,
         host: config_file.host,
         token: config_file.token,

@@ -1,6 +1,5 @@
+use chrono::DateTime;
 use futures::future::join_all;
-use owo_colors::OwoColorize;
-use owo_colors::colors::Green;
 
 use chrono::Utc;
 use geo::Bearing;
@@ -11,8 +10,12 @@ use traccar_lib::GeoFenceResponse;
 use traccar_lib::Position;
 
 use crate::config::AppConfig;
+use crate::config::DeviceConfig;
+use crate::report::Report;
+use crate::report::ReportPosition;
 
 mod config;
+mod report;
 
 #[derive(Debug)]
 struct Landmark {
@@ -39,11 +42,21 @@ async fn run(config: AppConfig) {
     }))
     .await;
 
+    let now = Utc::now();
+
     // devices_with_position.iter().for_each(|(device, position)| {
     for (device, position) in devices_with_position.iter() {
+        let device_config = config.device_config(device.id);
         println!(
             "{}",
-            report_device(device, position, geofences.as_slice(), landmarks)
+            report_device(
+                device,
+                position,
+                geofences.as_slice(),
+                landmarks,
+                device_config,
+                now,
+            )
         )
     }
 }
@@ -53,78 +66,151 @@ fn report_device(
     position: &Position,
     geofences: &[GeoFenceResponse],
     landmarks: &[Landmark],
-) -> String {
-    let now = Utc::now();
+    device_config: Option<&DeviceConfig>,
+    now: DateTime<Utc>,
+) -> Report {
     let dtime = now.signed_duration_since(position.fix_time);
-    let seconds_ago = dtime.as_seconds_f32().round();
+    let seconds_ago = dtime.as_seconds_f32().round() as u32;
+    let name = device_config
+        .and_then(|a| a.display_name.as_deref())
+        .unwrap_or(device.name.as_str());
 
-    // Turn the ids inside a position into a vec of &geofence
-    let fences: Vec<&GeoFenceResponse> = position
-        .geofence_ids
-        .iter()
-        .filter_map(|id| geofences.iter().find(|geofence| *id == geofence.id))
-        .collect();
+    let in_timeout = device_config
+        .and_then(|c| c.report_timeout_seconds)
+        .map(|timeout_seconds| seconds_ago < timeout_seconds);
 
-    // If we are in a known geofence
-    if !fences.is_empty() {
-        return format!(
-            "{} was in {} {} seconds ago",
-            device.name,
-            fences
-                .iter()
-                .map(|a| a.name.as_str())
-                .collect::<Vec<&str>>()
-                .join(","),
-            seconds_ago.fg::<Green>()
-        );
-    }
+    let position: ReportPosition = {
+        // Turn the ids inside a position into a vec of &geofence
+        let fences: Vec<&GeoFenceResponse> = position
+            .geofence_ids
+            .iter()
+            .filter_map(|id| geofences.iter().find(|geofence| *id == geofence.id))
+            .collect();
 
-    // We're not in a geofence, go find the nearest landmark
-    let device_location = Point::new(position.longitude, position.latitude);
+        // If we are in a known geofence
+        if !fences.is_empty() {
+            return Report::new(
+                name.to_owned(),
+                ReportPosition::InGeofences(fences.iter().map(|a| a.name.to_owned()).collect()),
+                in_timeout,
+                seconds_ago,
+            );
+        }
 
-    let closest = landmarks
-        .iter()
-        .min_by(|l1, l2| {
+        // We're not in a geofence, go find the nearest landmark
+        let device_location = Point::new(position.longitude, position.latitude);
+
+        let closest_landmark = landmarks.iter().min_by(|l1, l2| {
             let a = geo::GeodesicMeasure::wgs84().distance(l1.position, device_location);
             let b = geo::GeodesicMeasure::wgs84().distance(l2.position, device_location);
 
             f64::total_cmp(&a, &b)
+        });
+
+        // Report location relative to closest landmark, or a bare position as fallback
+        closest_landmark.map_or(ReportPosition::BarePosition(device_location), |landmark| {
+            let bearing = geo::GeodesicMeasure::wgs84().bearing(landmark.position, device_location);
+            let distance = geo::GeodesicMeasure::wgs84()
+                .distance(landmark.position, device_location)
+                .round();
+
+            ReportPosition::RelativeTo {
+                distance,
+                bearing,
+                name: landmark.name.to_owned(),
+            }
         })
-        .unwrap();
-
-    let bearing = geo::GeodesicMeasure::wgs84().bearing(closest.position, device_location);
-    let distance = geo::GeodesicMeasure::wgs84().distance(closest.position, device_location);
-
-    format!(
-        "{} was {}m {} of {} {} seconds ago",
-        device.name,
-        distance.round(),
-        bearing_to_compass_dir(bearing),
-        closest.name,
-        seconds_ago.fg::<Green>()
-    )
+    };
+    Report::new(name.to_owned(), position, in_timeout, seconds_ago)
 }
 
-fn bearing_to_compass_dir(bearing: f64) -> &'static str {
-    let b = bearing.rem_euclid(360.0);
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use geo::{LineString, Polygon};
 
-    match b {
-        348.75..=360.0 | 0.0..11.25 => "N",
-        11.25..33.75 => "NNE",
-        33.75..56.25 => "NE",
-        56.25..78.75 => "ENE",
-        78.75..101.25 => "E",
-        101.25..123.75 => "ESE",
-        123.75..146.25 => "SE",
-        146.25..168.75 => "SSE",
-        168.75..191.25 => "S",
-        191.25..213.75 => "SSW",
-        213.75..236.25 => "SW",
-        236.25..258.75 => "WSW",
-        258.75..281.25 => "W",
-        281.25..303.75 => "WNW",
-        303.75..326.25 => "NW",
-        326.25..348.75 => "NNW",
-        _ => unreachable!(),
+    use super::*;
+
+    #[test]
+    fn test_report_geofence() {
+        let device = DeviceReponse {
+            id: 0,
+            name: "Device".to_owned(),
+            position_id: 1,
+        };
+        let position = Position {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude: 0.0,
+            fix_time: DateTime::from_timestamp_nanos(0),
+            geofence_ids: vec![2],
+        }; // Void island
+
+        let p = Polygon::new(LineString::from(vec![(0., 0.), (1., 1.), (1., 0.)]), vec![]);
+        // let geofence_polygon = Polygon::new(exterior, interiors)
+        let geo: Vec<GeoFenceResponse> = vec![GeoFenceResponse {
+            id: 2,
+            name: "Geofence 1".to_owned(),
+            description: None,
+            area: p,
+        }];
+
+        let now = DateTime::from_timestamp_nanos(1_000_000_000);
+
+        let report = report_device(&device, &position, geo.as_slice(), &[], None, now);
+
+        assert_eq!(report.to_string(), "Device was in Geofence 1 1 seconds ago")
+    }
+
+    #[test]
+    fn test_report_relative() {
+        let device = DeviceReponse {
+            id: 0,
+            name: "Device".to_owned(),
+            position_id: 1,
+        };
+        let position = Position {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude: 0.0,
+            fix_time: DateTime::from_timestamp_nanos(0),
+            geofence_ids: vec![2],
+        }; // Void island
+
+        let landmark = Landmark {
+            name: "Landmark".to_owned(),
+            position: Point::new(1.0, 1.0),
+        };
+
+        let now = DateTime::from_timestamp_nanos(1_000_000_000);
+
+        let report = report_device(&device, &position, &[], &[landmark], None, now);
+
+        assert_eq!(
+            report.to_string(),
+            "Device was 156900m SW of Landmark 1 seconds ago"
+        )
+    }
+
+    #[test]
+    fn test_report_bare() {
+        let device = DeviceReponse {
+            id: 0,
+            name: "Device".to_owned(),
+            position_id: 1,
+        };
+        let position = Position {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude: 0.0,
+            fix_time: DateTime::from_timestamp_nanos(0),
+            geofence_ids: vec![2],
+        }; // Void island
+
+        let now = DateTime::from_timestamp_nanos(1_000_000_000);
+
+        let report = report_device(&device, &position, &[], &[], None, now);
+
+        assert_eq!(report.to_string(), "Device was at 0,0 1 seconds ago")
     }
 }
