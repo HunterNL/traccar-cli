@@ -1,10 +1,22 @@
 use chrono::DateTime;
+use std::env;
+use std::sync::mpsc::channel;
+
+use futures::StreamExt;
+use futures::channel::oneshot::Cancellation;
 use futures::future::join_all;
 
 use chrono::Utc;
 use geo::Bearing;
 use geo::Distance;
 use geo::Point;
+
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http;
+use tokio_tungstenite::tungstenite::http::uri::Scheme;
+use tokio_util::sync::CancellationToken;
 use traccar_lib::DeviceReponse;
 use traccar_lib::GeoFenceResponse;
 use traccar_lib::Position;
@@ -30,6 +42,69 @@ fn main() {
 
 #[tokio::main]
 async fn run(config: AppConfig) {
+    let tail = env::args().find(|arg| arg == "tail").is_some();
+    if !tail {
+        return report_positions(config).await;
+    }
+
+    let cancel_token = CancellationToken::new();
+
+    let token_clone = cancel_token.clone();
+
+    ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
+
+    tail_devices(config, cancel_token).await;
+}
+
+async fn tail_devices(config: AppConfig, cancel_token: CancellationToken) {
+    let client = traccar_lib::Traccar::new(config.host(), config.token());
+    let devices = client.list_devices().await;
+
+    let mut url: http::Uri = (String::new() + config.host() + "/api/socket")
+        .parse()
+        .unwrap();
+    let mut p = url.into_parts();
+    // p.scheme = Some("ws".try_into().unwrap());
+
+    let url: http::Uri = p.try_into().unwrap();
+
+    // let url = String::new() + "ws://" + config.host() + "/api/websocket";
+    println!("{url}");
+    let mut request = url.into_client_request().unwrap();
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {}", config.token()).parse().unwrap(),
+    );
+
+    let res = connect_async(request).await;
+    // if let Err(tungstenite::Error::Http(e)) = res {
+    //     let vec = e.body.unwrap();
+    //     let str = String::from_utf8(vec).unwrap();
+    //     println!("{}", &str);
+    // };
+    if res.is_err() {
+        println!("{res:?}")
+    }
+
+    let (streams, response) = res.unwrap();
+    let (write2, mut read2) = streams.split();
+
+    loop {
+        tokio::select! {
+            t = cancel_token.cancelled() => {
+                break
+            },
+            msg = read2.next() => {
+                println!("{msg:?}")
+            }
+
+        }
+    }
+
+    todo!()
+}
+
+async fn report_positions(config: AppConfig) {
     let client = traccar_lib::Traccar::new(config.host(), config.token());
     let devices = client.list_devices().await;
     let geofences = client.geofences_all().await;
@@ -60,7 +135,6 @@ async fn run(config: AppConfig) {
         )
     }
 }
-
 fn report_device(
     device: &DeviceReponse,
     position: &Position,

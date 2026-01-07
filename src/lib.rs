@@ -3,6 +3,7 @@ use reqwest::{IntoUrl, Url};
 mod devices;
 mod geofences;
 mod positions;
+// mod session;
 
 pub use devices::DeviceReponse;
 pub use geofences::GeoFenceResponse;
