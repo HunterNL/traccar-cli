@@ -1,9 +1,7 @@
 use chrono::DateTime;
 use std::env;
-use std::sync::mpsc::channel;
 
 use futures::StreamExt;
-use futures::channel::oneshot::Cancellation;
 use futures::future::join_all;
 
 use chrono::Utc;
@@ -11,11 +9,9 @@ use geo::Bearing;
 use geo::Distance;
 use geo::Point;
 
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http;
-use tokio_tungstenite::tungstenite::http::uri::Scheme;
 use tokio_util::sync::CancellationToken;
 use traccar_lib::DeviceReponse;
 use traccar_lib::GeoFenceResponse;
@@ -42,7 +38,7 @@ fn main() {
 
 #[tokio::main]
 async fn run(config: AppConfig) {
-    let tail = env::args().find(|arg| arg == "tail").is_some();
+    let tail = env::args().any(|arg| &arg == "tail");
     if !tail {
         return report_positions(config).await;
     }
@@ -60,23 +56,32 @@ async fn tail_devices(config: AppConfig, cancel_token: CancellationToken) {
     let client = traccar_lib::Traccar::new(config.host(), config.token());
     let devices = client.list_devices().await;
 
-    let mut url: http::Uri = (String::new() + config.host() + "/api/socket")
-        .parse()
-        .unwrap();
+    let mut url: http::Uri =
+        (String::new() + config.host() + "/api/socket" + "?token=" + config.token())
+            .parse()
+            .unwrap();
     let mut p = url.into_parts();
-    // p.scheme = Some("ws".try_into().unwrap());
+    p.scheme = Some("wss".try_into().unwrap());
+    // p.path_and_query.unwrap().query()
 
     let url: http::Uri = p.try_into().unwrap();
 
     // let url = String::new() + "ws://" + config.host() + "/api/websocket";
     println!("{url}");
     let mut request = url.into_client_request().unwrap();
-    request.headers_mut().insert(
-        "Authorization",
-        format!("Bearer {}", config.token()).parse().unwrap(),
-    );
+    // request.headers_mut().insert(
+    //     "Authorization",
+    //     format!("Bearer {}", config.token()).parse().unwrap(),
+    // );
+    //
+    // request.uri_mut().into_parts()
 
-    let res = connect_async(request).await;
+    // let config = WebSocketConfig{}
+    // crate::crate::tungstenite::stream::Maybe :MaybeTlsStream::new();
+    // let native_tls = TlsConnector::new;
+    let a = native_tls::TlsConnector::new().unwrap();
+    let a = tokio_tungstenite::Connector::NativeTls(a);
+    let res = connect_async_tls_with_config(request, None, false, Some(a)).await;
     // if let Err(tungstenite::Error::Http(e)) = res {
     //     let vec = e.body.unwrap();
     //     let str = String::from_utf8(vec).unwrap();
@@ -101,7 +106,7 @@ async fn tail_devices(config: AppConfig, cancel_token: CancellationToken) {
         }
     }
 
-    todo!()
+    // todo!()
 }
 
 async fn report_positions(config: AppConfig) {
