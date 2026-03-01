@@ -1,31 +1,19 @@
-use chrono::DateTime;
-use std::env;
+use std::{
+    env,
+    sync::{Arc, Mutex},
+};
 
-use futures::StreamExt;
-use futures::future::join_all;
-
-use chrono::Utc;
-use geo::Bearing;
-use geo::Distance;
 use geo::Point;
 
-use tokio_tungstenite::connect_async_tls_with_config;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http;
 use tokio_util::sync::CancellationToken;
-use traccar_lib::DeviceReponse;
-use traccar_lib::GeoFenceResponse;
-use traccar_lib::Position;
 
 use crate::config::AppConfig;
-use crate::config::DeviceConfig;
-use crate::report::Report;
-use crate::report::ReportPosition;
 
 mod config;
+mod mode;
 mod report;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Landmark {
     name: String,
     position: Point,
@@ -39,257 +27,32 @@ fn main() {
 #[tokio::main]
 async fn run(config: AppConfig) {
     let tail = env::args().any(|arg| &arg == "tail");
-    if !tail {
-        return report_positions(config).await;
-    }
+    let serve = env::args().any(|arg| &arg == "serve");
 
+    if !tail && !serve {
+        mode::report_once::report_positions(&config.clone()).await;
+    }
     let cancel_token = CancellationToken::new();
 
     let token_clone = cancel_token.clone();
 
     ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
 
-    tail_devices(config, cancel_token).await;
-}
-
-async fn tail_devices(config: AppConfig, cancel_token: CancellationToken) {
-    let client = traccar_lib::Traccar::new(config.host(), config.token());
-    let devices = client.list_devices().await;
-
-    let mut url: http::Uri =
-        (String::new() + config.host() + "/api/socket" + "?token=" + config.token())
-            .parse()
-            .unwrap();
-    let mut p = url.into_parts();
-    p.scheme = Some("wss".try_into().unwrap());
-    // p.path_and_query.unwrap().query()
-
-    let url: http::Uri = p.try_into().unwrap();
-
-    // let url = String::new() + "ws://" + config.host() + "/api/websocket";
-    println!("{url}");
-    let mut request = url.into_client_request().unwrap();
-    // request.headers_mut().insert(
-    //     "Authorization",
-    //     format!("Bearer {}", config.token()).parse().unwrap(),
-    // );
-    //
-    // request.uri_mut().into_parts()
-
-    // let config = WebSocketConfig{}
-    // crate::crate::tungstenite::stream::Maybe :MaybeTlsStream::new();
-    // let native_tls = TlsConnector::new;
-    let a = native_tls::TlsConnector::new().unwrap();
-    let a = tokio_tungstenite::Connector::NativeTls(a);
-    let res = connect_async_tls_with_config(request, None, false, Some(a)).await;
-    // if let Err(tungstenite::Error::Http(e)) = res {
-    //     let vec = e.body.unwrap();
-    //     let str = String::from_utf8(vec).unwrap();
-    //     println!("{}", &str);
-    // };
-    if res.is_err() {
-        println!("{res:?}")
+    if serve {
+        return mode::serve::serve(config, cancel_token, Arc::new(Mutex::new(vec![]))).await;
     }
-
-    let (streams, response) = res.unwrap();
-    let (write2, mut read2) = streams.split();
-
-    loop {
-        tokio::select! {
-            t = cancel_token.cancelled() => {
-                break
-            },
-            msg = read2.next() => {
-                println!("{msg:?}")
-            }
-
-        }
-    }
-
-    // todo!()
-}
-
-async fn report_positions(config: AppConfig) {
-    let client = traccar_lib::Traccar::new(config.host(), config.token());
-    let devices = client.list_devices().await;
-    let geofences = client.geofences_all().await;
-    let landmarks = config.landmarks();
-
-    // Join the actual position to a device
-    let devices_with_position = join_all(devices.into_iter().map(async |device| {
-        let position = client.position_get(device.position_id).await;
-        (device, position)
-    }))
-    .await;
-
-    let now = Utc::now();
-
-    // devices_with_position.iter().for_each(|(device, position)| {
-    for (device, position) in devices_with_position.iter() {
-        let device_config = config.device_config(device.id);
-        println!(
-            "{}",
-            report_device(
-                device,
-                position,
-                geofences.as_slice(),
-                landmarks,
-                device_config,
-                now,
-            )
-        )
+    if tail {
+        // mode::live_tail::tail_devices(config, cancel_token).await;
     }
 }
-fn report_device(
-    device: &DeviceReponse,
-    position: &Position,
-    geofences: &[GeoFenceResponse],
-    landmarks: &[Landmark],
-    device_config: Option<&DeviceConfig>,
-    now: DateTime<Utc>,
-) -> Report {
-    let dtime = now.signed_duration_since(position.fix_time);
-    let seconds_ago = dtime.as_seconds_f32().round() as u32;
-    let name = device_config
-        .and_then(|a| a.display_name.as_deref())
-        .unwrap_or(device.name.as_str());
 
-    let in_timeout = device_config
-        .and_then(|c| c.report_timeout_seconds)
-        .map(|timeout_seconds| seconds_ago < timeout_seconds);
-
-    let position: ReportPosition = {
-        // Turn the ids inside a position into a vec of &geofence
-        let fences: Vec<&GeoFenceResponse> = position
-            .geofence_ids
-            .iter()
-            .filter_map(|id| geofences.iter().find(|geofence| *id == geofence.id))
-            .collect();
-
-        // If we are in a known geofence
-        if !fences.is_empty() {
-            return Report::new(
-                name.to_owned(),
-                ReportPosition::InGeofences(fences.iter().map(|a| a.name.to_owned()).collect()),
-                in_timeout,
-                seconds_ago,
-            );
-        }
-
-        // We're not in a geofence, go find the nearest landmark
-        let device_location = Point::new(position.longitude, position.latitude);
-
-        let closest_landmark = landmarks.iter().min_by(|l1, l2| {
-            let a = geo::GeodesicMeasure::wgs84().distance(l1.position, device_location);
-            let b = geo::GeodesicMeasure::wgs84().distance(l2.position, device_location);
-
-            f64::total_cmp(&a, &b)
-        });
-
-        // Report location relative to closest landmark, or a bare position as fallback
-        closest_landmark.map_or(ReportPosition::BarePosition(device_location), |landmark| {
-            let bearing = geo::GeodesicMeasure::wgs84().bearing(landmark.position, device_location);
-            let distance = geo::GeodesicMeasure::wgs84()
-                .distance(landmark.position, device_location)
-                .round();
-
-            ReportPosition::RelativeTo {
-                distance,
-                bearing,
-                name: landmark.name.to_owned(),
-            }
-        })
-    };
-    Report::new(name.to_owned(), position, in_timeout, seconds_ago)
-}
-
-#[cfg(test)]
-mod tests {
-    use chrono::DateTime;
-    use geo::{LineString, Polygon};
-
-    use super::*;
-
-    #[test]
-    fn test_report_geofence() {
-        let device = DeviceReponse {
-            id: 0,
-            name: "Device".to_owned(),
-            position_id: 1,
-        };
-        let position = Position {
-            latitude: 0.0,
-            longitude: 0.0,
-            altitude: 0.0,
-            fix_time: DateTime::from_timestamp_nanos(0),
-            geofence_ids: vec![2],
-        }; // Void island
-
-        let p = Polygon::new(LineString::from(vec![(0., 0.), (1., 1.), (1., 0.)]), vec![]);
-        // let geofence_polygon = Polygon::new(exterior, interiors)
-        let geo: Vec<GeoFenceResponse> = vec![GeoFenceResponse {
-            id: 2,
-            name: "Geofence 1".to_owned(),
-            description: None,
-            area: p,
-        }];
-
-        let now = DateTime::from_timestamp_nanos(1_000_000_000);
-
-        let report = report_device(&device, &position, geo.as_slice(), &[], None, now);
-
-        assert_eq!(report.to_string(), "Device was in Geofence 1 1 seconds ago")
-    }
-
-    #[test]
-    fn test_report_relative() {
-        let device = DeviceReponse {
-            id: 0,
-            name: "Device".to_owned(),
-            position_id: 1,
-        };
-        let position = Position {
-            latitude: 0.0,
-            longitude: 0.0,
-            altitude: 0.0,
-            fix_time: DateTime::from_timestamp_nanos(0),
-            geofence_ids: vec![2],
-        }; // Void island
-
-        let landmark = Landmark {
-            name: "Landmark".to_owned(),
-            position: Point::new(1.0, 1.0),
-        };
-
-        let now = DateTime::from_timestamp_nanos(1_000_000_000);
-
-        let report = report_device(&device, &position, &[], &[landmark], None, now);
-
-        assert_eq!(
-            report.to_string(),
-            "Device was 156900m SW of Landmark 1 seconds ago"
-        )
-    }
-
-    #[test]
-    fn test_report_bare() {
-        let device = DeviceReponse {
-            id: 0,
-            name: "Device".to_owned(),
-            position_id: 1,
-        };
-        let position = Position {
-            latitude: 0.0,
-            longitude: 0.0,
-            altitude: 0.0,
-            fix_time: DateTime::from_timestamp_nanos(0),
-            geofence_ids: vec![2],
-        }; // Void island
-
-        let now = DateTime::from_timestamp_nanos(1_000_000_000);
-
-        let report = report_device(&device, &position, &[], &[], None, now);
-
-        assert_eq!(report.to_string(), "Device was at 0,0 1 seconds ago")
+fn format_distance(distance: &f64) -> Option<String> {
+    match distance {
+        ..0.0 => None,
+        0.0..1000.0 => Some(format!("{distance:.0}m")), // 0-999 meters
+        1000f64..10_000f64 => Some(format!("{:.2}km", distance / 1000.0)), //1km-9.99km,
+        10_000f64..100_000f64 => Some(format!("{:.1}km", distance / 1000.0)), //10.0km-99.9km
+        100_000f64.. => Some(format!("{:.0}km", distance / 1000.0)), //100 km
+        _ => None,                                      // _ => Some("Very far away".to_string()),
     }
 }

@@ -19,7 +19,7 @@ struct LandmarkConfigLocation {
     lng: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AppConfig {
     landmarks: Vec<Landmark>,
     host: String,
@@ -34,7 +34,7 @@ pub struct ConfigFile {
     devices: Option<HashMap<u32, DeviceConfig>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DeviceConfig {
     pub display_name: Option<String>,
     pub report_timeout_seconds: Option<u32>,

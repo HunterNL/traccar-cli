@@ -8,6 +8,7 @@ mod positions;
 pub use devices::DeviceReponse;
 pub use geofences::GeoFenceResponse;
 pub use positions::Position;
+pub use positions::PositionResponse;
 
 pub struct Traccar {
     token: String,

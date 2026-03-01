@@ -1,7 +1,9 @@
 use core::fmt;
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 
 use geo::Point;
+
+use crate::format_distance;
 
 pub enum ReportPosition {
     RelativeTo {
@@ -13,11 +15,42 @@ pub enum ReportPosition {
     BarePosition(Point),
 }
 
+impl Display for ReportPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            ReportPosition::RelativeTo {
+                distance,
+                bearing,
+                name,
+            } => f.write_fmt(format_args!(
+                "{} {} of {}",
+                format_distance(distance).unwrap_or("err".to_string()),
+                bearing_to_compass_dir(*bearing),
+                name
+            )),
+
+            ReportPosition::InGeofences(items) => {
+                let fences = items
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<&str>>()
+                    .join(",");
+
+                f.write_str(&fences)
+            }
+
+            ReportPosition::BarePosition(point) => {
+                f.write_fmt(format_args!("at {},{}", point.x(), point.y()))
+            }
+        }
+    }
+}
+
 pub struct Report {
-    name: String,
-    position: ReportPosition,
-    in_timeout: Option<bool>,
-    seconds_ago: u32,
+    pub name: String,
+    pub position: ReportPosition,
+    pub in_timeout: Option<bool>,
+    pub seconds_ago: u32,
 }
 
 fn append_age(
@@ -42,35 +75,8 @@ fn append_age(
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)?;
-        f.write_str(" was ")?;
-        match &self.position {
-            ReportPosition::RelativeTo {
-                distance,
-                bearing,
-                name,
-            } => f.write_fmt(format_args!(
-                "{}m {} of {}",
-                distance,
-                bearing_to_compass_dir(*bearing),
-                name
-            )),
-
-            ReportPosition::InGeofences(items) => {
-                f.write_str("in ")?;
-
-                let fences = items
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<&str>>()
-                    .join(",");
-
-                f.write_str(&fences)
-            }
-
-            ReportPosition::BarePosition(point) => {
-                f.write_fmt(format_args!("at {},{}", point.x(), point.y()))
-            }
-        }?;
+        f.write_str(" was in ")?;
+        f.write_fmt(format_args!("{}", self.position));
 
         append_age(f, self.seconds_ago, self.in_timeout)
     }
