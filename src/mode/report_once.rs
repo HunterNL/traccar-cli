@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use chrono::DateTime;
 
 use futures::future::join_all;
@@ -112,6 +114,13 @@ fn report_device(
         .and_then(|a| a.display_name.as_deref())
         .unwrap_or(device.name.as_str());
 
+    let expected_next_fix_time = device_config
+        .and_then(|config| config.predict_update_interval_seconds)
+        .map(|seconds| {
+            let duration = Duration::from_secs(seconds.into());
+            position.fix_time + duration
+        });
+
     let in_timeout = device_config
         .and_then(|c| c.report_timeout_seconds)
         .map(|timeout_seconds| seconds_ago < timeout_seconds);
@@ -131,6 +140,7 @@ fn report_device(
                 ReportPosition::InGeofences(fences.iter().map(|a| a.name.to_owned()).collect()),
                 in_timeout,
                 seconds_ago,
+                expected_next_fix_time,
             );
         }
 
@@ -158,7 +168,13 @@ fn report_device(
             }
         })
     };
-    Report::new(name.to_owned(), position, in_timeout, seconds_ago)
+    Report::new(
+        name.to_owned(),
+        position,
+        in_timeout,
+        seconds_ago,
+        expected_next_fix_time,
+    )
 }
 
 #[cfg(test)]

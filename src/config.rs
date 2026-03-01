@@ -38,6 +38,7 @@ pub struct ConfigFile {
 pub struct DeviceConfig {
     pub display_name: Option<String>,
     pub report_timeout_seconds: Option<u32>,
+    pub predict_update_interval_seconds: Option<u32>,
 }
 
 impl AppConfig {

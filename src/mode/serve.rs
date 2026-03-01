@@ -3,11 +3,9 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    config::AppConfig,
-    mode::report_once::{report_positions, report_single_device},
-    report,
-};
+use crate::{config::AppConfig, mode::report_once::report_positions, report};
+use chrono::Utc;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use zbus::{connection, interface};
 
@@ -36,16 +34,29 @@ pub async fn serve(
     location: Arc<Mutex<Vec<(u32, report::Report)>>>,
 ) -> () {
     let config_clone = config.clone();
-    let config_clone2 = config.clone();
     let location_clone = Arc::clone(&location);
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
         loop {
-            interval.tick().await;
-            let reports = report_positions(&config_clone2).await;
+            let reports = report_positions(&config_clone).await;
+            println!("{:?}", reports);
+            let next_report_time = reports
+                .iter()
+                .filter_map(|a| a.1.next_update_expected)
+                .map(|a| a + Duration::from_secs(5)) //Add 5 seconds leeway for Traccar to handle the update
+                .min();
 
-            let mut l = location_clone.lock().unwrap();
-            *l = reports
+            let sleep_duration: Duration = next_report_time
+                .map(|date| date - Utc::now())
+                .and_then(|delta| delta.to_std().ok())
+                // .and_then(|a| a.try_into().ok())
+                .unwrap_or(Duration::from_secs(30));
+
+            {
+                let mut l = location_clone.lock().unwrap();
+                *l = reports;
+                // Needed to drop the MutexGuard before awaiting
+            }
+            sleep(sleep_duration).await;
         }
     });
     let greeter = LocationService { location };

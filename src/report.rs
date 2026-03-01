@@ -1,10 +1,12 @@
 use core::fmt;
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 
+use chrono::{DateTime, Utc};
 use geo::Point;
 
 use crate::format_distance;
 
+#[derive(Clone, Debug)]
 pub enum ReportPosition {
     RelativeTo {
         distance: f64,
@@ -45,12 +47,13 @@ impl Display for ReportPosition {
         }
     }
 }
-
+#[derive(Clone, Debug)]
 pub struct Report {
     pub name: String,
     pub position: ReportPosition,
     pub in_timeout: Option<bool>,
     pub seconds_ago: u32,
+    pub next_update_expected: Option<DateTime<Utc>>,
 }
 
 fn append_age(
@@ -76,7 +79,7 @@ impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)?;
         f.write_str(" was in ")?;
-        f.write_fmt(format_args!("{}", self.position));
+        f.write_fmt(format_args!("{}", self.position))?;
 
         append_age(f, self.seconds_ago, self.in_timeout)
     }
@@ -88,8 +91,10 @@ impl Report {
         position: ReportPosition,
         in_timeout: Option<bool>,
         seconds_ago: u32,
+        predicted_update: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
+            next_update_expected: predicted_update,
             name,
             position,
             in_timeout,
