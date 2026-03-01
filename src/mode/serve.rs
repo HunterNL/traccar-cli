@@ -11,12 +11,12 @@ use crate::{
 use tokio_util::sync::CancellationToken;
 use zbus::{connection, interface};
 
-struct Greeter {
+struct LocationService {
     location: Arc<Mutex<Vec<(u32, report::Report)>>>,
 }
 
 #[interface(name = "life.vern.traccar")]
-impl Greeter {
+impl LocationService {
     // Can be `async` as well.
     fn Get(&mut self, id: u32) -> String {
         let a = self.location.lock().unwrap();
@@ -48,7 +48,7 @@ pub async fn serve(
             *l = reports
         }
     });
-    let greeter = Greeter { location };
+    let greeter = LocationService { location };
     let conn = connection::Builder::session()
         .unwrap()
         .name("life.vern.traccar")
