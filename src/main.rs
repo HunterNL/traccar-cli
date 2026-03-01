@@ -30,7 +30,11 @@ async fn run(config: AppConfig) {
     let serve = env::args().any(|arg| &arg == "serve");
 
     if !tail && !serve {
-        mode::report_once::report_positions(&config.clone()).await;
+        let reports = mode::report_once::report_positions(&config.clone()).await;
+        reports.iter().for_each(|a| {
+            println!("{}", a.1);
+        });
+        return;
     }
     let cancel_token = CancellationToken::new();
 
