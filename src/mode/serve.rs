@@ -7,7 +7,7 @@ use crate::{config::AppConfig, mode::report_once::report_positions, report};
 use chrono::Utc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use zbus::{connection, interface};
+use zbus::{connection, interface, names::BusName};
 
 struct LocationService {
     location: Arc<Mutex<Vec<(u32, report::Report)>>>,
@@ -36,9 +36,32 @@ pub async fn serve(
     let config_clone = config.clone();
     let location_clone = Arc::clone(&location);
     tokio::spawn(async move {
+        let location_service = LocationService { location };
+        let dbus_connection = connection::Builder::session()
+            .unwrap()
+            .name("life.vern.traccar")
+            .unwrap()
+            .serve_at("/GetLocation", location_service)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
         loop {
             let reports = report_positions(&config_clone).await;
-            println!("{:?}", reports);
+
+            for (id, report) in &reports {
+                dbus_connection
+                    .emit_signal(
+                        None::<BusName>,
+                        "/device_positions",
+                        "life.vern.traccar",
+                        "position_update",
+                        &(id, report.position.to_string()),
+                    )
+                    .await
+                    .unwrap();
+            }
             let next_report_time = reports
                 .iter()
                 .filter_map(|a| a.1.next_update_expected)
@@ -59,16 +82,6 @@ pub async fn serve(
             sleep(sleep_duration).await;
         }
     });
-    let greeter = LocationService { location };
-    let conn = connection::Builder::session()
-        .unwrap()
-        .name("life.vern.traccar")
-        .unwrap()
-        .serve_at("/GetLocation", greeter)
-        .unwrap()
-        .build()
-        .await
-        .unwrap();
 
     token.cancelled().await
 }
