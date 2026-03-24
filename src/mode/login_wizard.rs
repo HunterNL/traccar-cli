@@ -8,6 +8,13 @@ fn await_input() -> String {
     out.trim().to_owned()
 }
 
+fn await_secret_input() -> String {
+    rpassword::read_password()
+        .expect("error in rpassword")
+        .trim()
+        .to_owned()
+}
+
 pub fn run(config_file: &ConfigFile) {
     let host = {
         match &config_file.host {
@@ -42,7 +49,7 @@ pub fn run(config_file: &ConfigFile) {
             }
         }
 
-        let input = await_input();
+        let input = await_secret_input();
         if input.is_empty() {
             config_file.token.clone()
         } else {
