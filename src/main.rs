@@ -3,12 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use clap::Parser;
 use geo::Point;
 
 use tokio_util::sync::CancellationToken;
 
 use crate::config::AppConfig;
 
+mod arguments;
 mod config;
 mod mode;
 mod report;
@@ -26,27 +28,27 @@ fn main() {
 
 #[tokio::main]
 async fn run(config: AppConfig) {
-    let tail = env::args().any(|arg| &arg == "tail");
-    let serve = env::args().any(|arg| &arg == "serve");
+    let args = arguments::Cli::parse();
 
-    if !tail && !serve {
-        let reports = mode::report_once::report_positions(&config.clone()).await;
-        reports.iter().for_each(|a| {
-            println!("{}", a.1);
-        });
-        return;
-    }
-    let cancel_token = CancellationToken::new();
+    match args.command {
+        Some(arguments::Commands::Tail) => {
+            unimplemented!()
+        }
+        Some(arguments::Commands::Serve) => {
+            let cancel_token = CancellationToken::new();
 
-    let token_clone = cancel_token.clone();
+            let token_clone = cancel_token.clone();
 
-    ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
+            ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
 
-    if serve {
-        return mode::serve::serve(config, cancel_token, Arc::new(Mutex::new(vec![]))).await;
-    }
-    if tail {
-        // mode::live_tail::tail_devices(config, cancel_token).await;
+            mode::serve::serve(config, cancel_token, Arc::new(Mutex::new(vec![]))).await;
+        }
+        Some(arguments::Commands::List) | None => {
+            let reports = mode::report_once::report_positions(&config.clone()).await;
+            reports.iter().for_each(|a| {
+                println!("{}", a.1);
+            });
+        }
     }
 }
 
