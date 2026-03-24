@@ -19,6 +19,7 @@ struct LandmarkConfigLocation {
     lng: f64,
 }
 
+/// The configuration as 'required' by most of the app
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     landmarks: Vec<Landmark>,
@@ -27,6 +28,7 @@ pub struct AppConfig {
     devices: HashMap<u32, DeviceConfig>,
 }
 
+/// The raw configuration file, for serialization
 #[derive(Deserialize, Serialize)]
 pub struct ConfigFile {
     pub host: Option<String>,
@@ -40,12 +42,58 @@ pub struct DeviceConfig {
     pub report_timeout_seconds: Option<u32>,
     pub predict_update_interval_seconds: Option<u32>,
 }
-//     AppConfig {
-//     devices: config_file.devices.unwrap_or_default(),
-//     landmarks,
-//     host: config_file.host,
-//     token: config_file.token,
-// }se();
+#[derive(Debug, Clone)]
+pub struct ConfigBase {
+    dir: PathBuf,
+    landmarks: PathBuf,
+    config_file: PathBuf,
+}
+
+impl ConfigBase {
+    pub fn new(path: PathBuf) -> Self {
+        if !path.is_dir() {
+            panic!("Path passed to ConfigBase::new is not a directory");
+        }
+        let path = path.canonicalize().expect("to canonicalize path");
+        Self {
+            landmarks: path.join("landmarks.json"),
+            config_file: path.join("config.json"),
+            dir: path,
+        }
+    }
+
+    // pub fn dir(&self) -> &Path {
+    //     &self.dir
+    // }
+
+    pub fn read_config_file(&self) -> ConfigFile {
+        let file = fs::read_to_string(&self.config_file).unwrap();
+        serde_json::from_str(&file).unwrap()
+    }
+
+    pub fn write_config_file(&self, config: &ConfigFile) {
+        let bytes = serde_json::to_vec_pretty(config).unwrap();
+        std::fs::write(&self.config_file, bytes).unwrap();
+    }
+
+    pub fn read_landmark_file(&self) -> Vec<Landmark> {
+        let landmarks = fs::read_to_string(&self.landmarks).unwrap();
+        let config: Vec<LandmarkConfig> = serde_json::from_str(&landmarks).unwrap();
+        config
+            .into_iter()
+            .map(|landmark| Landmark {
+                name: landmark.name,
+                position: Point::new(landmark.location.lng, landmark.location.lat),
+            })
+            .collect()
+    }
+}
+
+impl Default for ConfigBase {
+    fn default() -> Self {
+        Self::new(dirs::config_local_dir().unwrap().join("traccar"))
+    }
+}
 
 impl AppConfig {
     pub fn from_config_file(file: &ConfigFile, landmarks: Vec<Landmark>) -> Self {
@@ -71,37 +119,4 @@ impl AppConfig {
     }
 }
 
-pub fn dir() -> PathBuf {
-    dirs::config_local_dir().unwrap().join("traccar")
-}
-
-fn config_path() -> PathBuf {
-    dir().join("config.json")
-}
-
-pub fn landmarks_read() -> Vec<Landmark> {
-    let path = dir().join("landmarks.json");
-
-    let landmarks = fs::read_to_string(path).unwrap();
-    let config: Vec<LandmarkConfig> = serde_json::from_str(&landmarks).unwrap();
-    config
-        .into_iter()
-        .map(|landmark| Landmark {
-            name: landmark.name,
-            position: Point::new(landmark.location.lng, landmark.location.lat),
-        })
-        .collect()
-}
-pub fn config_read() -> ConfigFile {
-    let config_file: ConfigFile = {
-        let file = fs::read_to_string(config_path()).unwrap();
-        serde_json::from_str(&file).unwrap()
-    };
-
-    config_file
-}
-
-pub fn config_write(config: &ConfigFile) {
-    let bytes = serde_json::to_vec_pretty(&config).unwrap();
-    std::fs::write(config_path(), bytes).unwrap();
-}
+// pub fn config_write(config: &ConfigFile) {}

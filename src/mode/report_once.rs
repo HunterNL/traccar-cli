@@ -15,18 +15,18 @@ use traccar_lib::Position;
 
 use crate::Landmark;
 use crate::config::AppConfig;
-use crate::config::ConfigFile;
+use crate::config::ConfigBase;
 use crate::config::DeviceConfig;
 use crate::report::Report;
 use crate::report::ReportPosition;
 
-pub async fn report_positions(
-    config_file: &ConfigFile,
-    landmarks: Vec<Landmark>,
-) -> Vec<(u32, Report)> {
+pub async fn report_positions(config: &ConfigBase) -> Vec<(u32, Report)> {
+    let config_file = &config.read_config_file();
+    let landmarks = config.read_landmark_file();
     let config = AppConfig::from_config_file(config_file, landmarks);
     inner(&config).await
 }
+
 pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
     let client = traccar_lib::Traccar::new(config.host(), config.token());
     let devices = client.list_devices().await;
@@ -60,52 +60,6 @@ pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
             )
         })
         .collect()
-}
-
-pub async fn report_single_device(config: &AppConfig, device_id: u32) -> String {
-    let client = traccar_lib::Traccar::new(config.host(), config.token());
-    let devices = client.list_devices().await;
-    let geofences = client.geofences_all().await;
-    let landmarks = config.landmarks();
-
-    let device = devices.into_iter().find(|a| a.id == device_id);
-    let position = match &device {
-        Some(device) => Some(client.position_get(device.position_id).await),
-        None => None,
-    };
-
-    let device_config = config.device_config(device_id);
-
-    let now = Utc::now();
-
-    match position {
-        Some(p) => report_device(
-            device.as_ref().unwrap(),
-            &p,
-            &geofences,
-            landmarks,
-            device_config,
-            now,
-        )
-        .to_string(),
-        None => "Unavailable".to_string(),
-    }
-
-    // devices_with_position.iter().for_each(|(device, position)| {
-    // for (device, position) in devices_with_position.iter() {
-    //     let device_config = config.device_config(device.id);
-    //     println!(
-    //         "{}",
-    //         report_device(
-    //             device,
-    //             position,
-    //             geofences.as_slice(),
-    //             landmarks,
-    //             device_config,
-    //             now,
-    //         )
-    //     )
-    // }
 }
 
 fn report_device(

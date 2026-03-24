@@ -1,6 +1,6 @@
 use std::{io::stdin, process::exit};
 
-use crate::config::{ConfigFile, config_write};
+use crate::config::{ConfigBase, ConfigFile};
 
 fn await_input() -> String {
     let mut out = String::new();
@@ -15,7 +15,8 @@ fn await_secret_input() -> String {
         .to_owned()
 }
 
-pub fn run(config_file: &ConfigFile) {
+pub fn run(config_base: ConfigBase) {
+    let config_file = config_base.read_config_file();
     let host = {
         match &config_file.host {
             Some(host) => {
@@ -63,7 +64,7 @@ pub fn run(config_file: &ConfigFile) {
         devices: config_file.devices.clone(),
     };
 
-    config_write(&config_file);
+    config_base.write_config_file(&config_file);
 
     println!("Info saved");
 }

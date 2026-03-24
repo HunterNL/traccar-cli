@@ -4,9 +4,8 @@ use std::{
 };
 
 use crate::{
-    Landmark,
-    config::{AppConfig, ConfigFile},
-    mode::report_once::{inner, report_positions},
+    config::{AppConfig, ConfigBase},
+    mode::report_once::inner,
     report,
 };
 use chrono::Utc;
@@ -33,19 +32,22 @@ impl LocationService {
     }
 }
 
-pub async fn serve(
-    config_file: ConfigFile,
-    landmarks: Vec<Landmark>,
-    token: CancellationToken,
-    location: Arc<Mutex<Vec<(u32, report::Report)>>>,
-) -> () {
-    let lm_clone = landmarks.clone();
-    let config = AppConfig::from_config_file(&config_file, lm_clone);
-    let config_clone = config.clone();
-    let location_clone = Arc::clone(&location);
+pub async fn serve(config_dir: &ConfigBase) -> () {
+    let device_locations = Arc::new(Mutex::new(vec![]));
+    let landmarks = config_dir.read_landmark_file();
+    let config_file = config_dir.read_config_file();
+    let cancel_token = CancellationToken::new();
+
+    let token_clone = cancel_token.clone();
+
+    ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
+    let config = AppConfig::from_config_file(&config_file, landmarks);
+
+    let location_clone = Arc::clone(&device_locations);
     tokio::spawn(async move {
-        let landmarks = landmarks.clone();
-        let location_service = LocationService { location };
+        let location_service = LocationService {
+            location: device_locations,
+        };
         let dbus_connection = connection::Builder::session()
             .unwrap()
             .name("life.vern.traccar")
@@ -92,5 +94,5 @@ pub async fn serve(
         }
     });
 
-    token.cancelled().await
+    cancel_token.cancelled().await
 }
