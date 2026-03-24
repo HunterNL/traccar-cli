@@ -14,4 +14,5 @@ pub enum Commands {
     Tail,
     Serve,
     List,
+    Login,
 }

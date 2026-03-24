@@ -3,7 +3,12 @@ use std::{
     time::Duration,
 };
 
-use crate::{config::AppConfig, mode::report_once::report_positions, report};
+use crate::{
+    Landmark,
+    config::{AppConfig, ConfigFile},
+    mode::report_once::{inner, report_positions},
+    report,
+};
 use chrono::Utc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -29,13 +34,17 @@ impl LocationService {
 }
 
 pub async fn serve(
-    config: AppConfig,
+    config_file: ConfigFile,
+    landmarks: Vec<Landmark>,
     token: CancellationToken,
     location: Arc<Mutex<Vec<(u32, report::Report)>>>,
 ) -> () {
+    let lm_clone = landmarks.clone();
+    let config = AppConfig::from_config_file(&config_file, lm_clone);
     let config_clone = config.clone();
     let location_clone = Arc::clone(&location);
     tokio::spawn(async move {
+        let landmarks = landmarks.clone();
         let location_service = LocationService { location };
         let dbus_connection = connection::Builder::session()
             .unwrap()
@@ -48,7 +57,7 @@ pub async fn serve(
             .unwrap();
 
         loop {
-            let reports = report_positions(&config_clone).await;
+            let reports = inner(&config).await;
 
             for (id, report) in &reports {
                 dbus_connection

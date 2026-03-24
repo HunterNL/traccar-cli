@@ -15,11 +15,19 @@ use traccar_lib::Position;
 
 use crate::Landmark;
 use crate::config::AppConfig;
+use crate::config::ConfigFile;
 use crate::config::DeviceConfig;
 use crate::report::Report;
 use crate::report::ReportPosition;
 
-pub async fn report_positions(config: &AppConfig) -> Vec<(u32, Report)> {
+pub async fn report_positions(
+    config_file: &ConfigFile,
+    landmarks: Vec<Landmark>,
+) -> Vec<(u32, Report)> {
+    let config = AppConfig::from_config_file(config_file, landmarks);
+    inner(&config).await
+}
+pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
     let client = traccar_lib::Traccar::new(config.host(), config.token());
     let devices = client.list_devices().await;
     let geofences = client.geofences_all().await;

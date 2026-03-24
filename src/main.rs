@@ -1,14 +1,9 @@
-use std::{
-    env,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use geo::Point;
 
 use tokio_util::sync::CancellationToken;
-
-use crate::config::AppConfig;
 
 mod arguments;
 mod config;
@@ -22,29 +17,38 @@ struct Landmark {
 }
 
 fn main() {
-    let config = config::config_get();
-    run(config);
+    run();
 }
 
 #[tokio::main]
-async fn run(config: AppConfig) {
+async fn run() {
     let args = arguments::Cli::parse();
+    let config_file = config::config_read();
+    let landmarks = config::landmarks_read();
 
     match args.command {
         Some(arguments::Commands::Tail) => {
             unimplemented!()
         }
         Some(arguments::Commands::Serve) => {
+            // let config = AppConfig::from_config_file(&config_file, landmarks);
             let cancel_token = CancellationToken::new();
 
             let token_clone = cancel_token.clone();
 
             ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
 
-            mode::serve::serve(config, cancel_token, Arc::new(Mutex::new(vec![]))).await;
+            mode::serve::serve(
+                config_file,
+                landmarks,
+                cancel_token,
+                Arc::new(Mutex::new(vec![])),
+            )
+            .await;
         }
+        Some(arguments::Commands::Login) => mode::login_wizard::run(&config_file),
         Some(arguments::Commands::List) | None => {
-            let reports = mode::report_once::report_positions(&config.clone()).await;
+            let reports = mode::report_once::report_positions(&config_file, landmarks).await;
             reports.iter().for_each(|a| {
                 println!("{}", a.1);
             });
