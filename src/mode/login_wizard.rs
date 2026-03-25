@@ -16,9 +16,15 @@ fn await_secret_input() -> String {
 }
 
 pub fn run(config_base: ConfigBase) {
-    let config_file = config_base.read_config_file();
+    let current_config = config_base.read_config_file();
+
+    let current_host = current_config.as_ref().and_then(|f| f.host.clone());
+    let current_token = current_config.as_ref().and_then(|c| c.token.clone());
+    let device_config = current_config.and_then(|f| f.devices);
+
+    // Ask for hostname
     let host = {
-        match &config_file.host {
+        match &current_host {
             Some(host) => {
                 println!("Enter hostname or leave empty to keep {host}:");
             }
@@ -29,7 +35,7 @@ pub fn run(config_base: ConfigBase) {
 
         let input = await_input();
         if input.is_empty() {
-            config_file.host.clone()
+            current_host
         } else {
             Some(input)
         }
@@ -40,8 +46,9 @@ pub fn run(config_base: ConfigBase) {
         exit(1);
     }
 
+    // Ask for token
     let token = {
-        match &config_file.token {
+        match &current_token {
             Some(_) => {
                 println!("Enter token or leave empty to keep as is:");
             }
@@ -52,19 +59,19 @@ pub fn run(config_base: ConfigBase) {
 
         let input = await_secret_input();
         if input.is_empty() {
-            config_file.token.clone()
+            current_token
         } else {
             Some(input)
         }
     };
 
-    let config_file: ConfigFile = ConfigFile {
+    let new_config: ConfigFile = ConfigFile {
         host,
         token,
-        devices: config_file.devices.clone(),
+        devices: device_config,
     };
 
-    config_base.write_config_file(&config_file);
+    config_base.write_config_file(&new_config);
 
     println!("Info saved");
 }

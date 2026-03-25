@@ -66,9 +66,11 @@ impl ConfigBase {
     //     &self.dir
     // }
 
-    pub fn read_config_file(&self) -> ConfigFile {
-        let file = fs::read_to_string(&self.config_file).unwrap();
-        serde_json::from_str(&file).unwrap()
+    pub fn read_config_file(&self) -> Option<ConfigFile> {
+        fs::read_to_string(&self.config_file)
+            .ok()
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
     }
 
     pub fn write_config_file(&self, config: &ConfigFile) {

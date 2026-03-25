@@ -35,7 +35,7 @@ impl LocationService {
 pub async fn serve(config_dir: &ConfigBase) -> () {
     let device_locations = Arc::new(Mutex::new(vec![]));
     let landmarks = config_dir.read_landmark_file();
-    let config_file = config_dir.read_config_file();
+    let config_file = config_dir.read_config_file().unwrap();
     let cancel_token = CancellationToken::new();
 
     let token_clone = cancel_token.clone();

@@ -21,7 +21,7 @@ use crate::report::Report;
 use crate::report::ReportPosition;
 
 pub async fn report_positions(config: &ConfigBase) -> Vec<(u32, Report)> {
-    let config_file = &config.read_config_file();
+    let config_file = &config.read_config_file().unwrap();
     let landmarks = config.read_landmark_file();
     let config = AppConfig::from_config_file(config_file, landmarks);
     inner(&config).await
