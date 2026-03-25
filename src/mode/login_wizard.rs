@@ -1,5 +1,7 @@
 use std::{io::stdin, process::exit};
 
+use traccar_lib::TracarrError;
+
 use crate::config::{ConfigBase, ConfigFile};
 
 fn await_input() -> String {
@@ -15,7 +17,7 @@ fn await_secret_input() -> String {
         .to_owned()
 }
 
-pub fn run(config_base: ConfigBase) {
+pub fn run(config_base: ConfigBase) -> Option<TracarrError> {
     let current_config = config_base.read_config_file();
 
     let current_host = current_config.as_ref().and_then(|f| f.host.clone());
@@ -74,4 +76,6 @@ pub fn run(config_base: ConfigBase) {
     config_base.write_config_file(&new_config);
 
     println!("Info saved");
+
+    None
 }

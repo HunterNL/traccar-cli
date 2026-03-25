@@ -16,6 +16,12 @@ pub struct Traccar {
     host: Url,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum TracarrError {
+    #[error("Invalid host")]
+    InvalidHost(#[from] reqwest::Error),
+}
+
 // #[derive(Deserialize, Debug)]
 // pub struct DeviceId(u32);
 
@@ -23,13 +29,15 @@ pub struct Traccar {
 // pub struct Device {
 //     id: DeviceId,
 // }
+
 impl Traccar {
-    pub fn new(host: impl IntoUrl, token: impl Into<String>) -> Self {
-        Self {
+    pub fn new(host: impl IntoUrl, token: impl Into<String>) -> Result<Self, TracarrError> {
+        let host = host.into_url()?;
+        Ok(Self {
             http_client: reqwest::Client::new(),
             token: token.into(),
-            host: host.into_url().unwrap(),
-        }
+            host,
+        })
     }
 
     fn prepare_request(&self, path: &str) -> reqwest::RequestBuilder {

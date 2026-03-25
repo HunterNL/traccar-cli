@@ -78,16 +78,22 @@ impl ConfigBase {
         std::fs::write(&self.config_file, bytes).unwrap();
     }
 
-    pub fn read_landmark_file(&self) -> Vec<Landmark> {
-        let landmarks = fs::read_to_string(&self.landmarks).unwrap();
-        let config: Vec<LandmarkConfig> = serde_json::from_str(&landmarks).unwrap();
-        config
-            .into_iter()
-            .map(|landmark| Landmark {
-                name: landmark.name,
-                position: Point::new(landmark.location.lng, landmark.location.lat),
-            })
-            .collect()
+    pub fn read_landmark_file(&self) -> Option<Vec<Landmark>> {
+        match fs::read_to_string(&self.landmarks) {
+            Ok(landmark_str) => {
+                let config: Vec<LandmarkConfig> = serde_json::from_str(&landmark_str).unwrap();
+                Some(
+                    config
+                        .into_iter()
+                        .map(|landmark| Landmark {
+                            name: landmark.name,
+                            position: Point::new(landmark.location.lng, landmark.location.lat),
+                        })
+                        .collect(),
+                )
+            }
+            Err(_) => None,
+        }
     }
 }
 
@@ -97,14 +103,38 @@ impl Default for ConfigBase {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum AppConfigError {
+    #[error("Host is missing")]
+    MissingHost,
+    #[error("Token is missing")]
+    MissingToken,
+}
+
 impl AppConfig {
-    pub fn from_config_file(file: &ConfigFile, landmarks: Vec<Landmark>) -> Self {
-        Self {
+    pub fn from_config_file(
+        file: &ConfigFile,
+        landmarks: Vec<Landmark>,
+    ) -> Result<Self, AppConfigError> {
+        let host = file
+            .host
+            .as_ref()
+            .ok_or(AppConfigError::MissingHost)?
+            .clone();
+        let token = file
+            .token
+            .as_ref()
+            .ok_or(AppConfigError::MissingToken)?
+            .clone();
+
+        let devices = file.devices.clone().unwrap_or_default();
+
+        Ok(Self {
             landmarks,
-            host: file.host.as_ref().unwrap().to_owned(),
-            token: file.token.as_ref().unwrap().to_owned(),
-            devices: file.devices.as_ref().unwrap().to_owned(),
-        }
+            host,
+            token,
+            devices,
+        })
     }
 
     pub fn landmarks(&self) -> &[Landmark] {

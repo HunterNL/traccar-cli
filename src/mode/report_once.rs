@@ -12,6 +12,7 @@ use geo::Point;
 use traccar_lib::DeviceReponse;
 use traccar_lib::GeoFenceResponse;
 use traccar_lib::Position;
+use traccar_lib::TracarrError;
 
 use crate::Landmark;
 use crate::config::AppConfig;
@@ -20,15 +21,23 @@ use crate::config::DeviceConfig;
 use crate::report::Report;
 use crate::report::ReportPosition;
 
-pub async fn report_positions(config: &ConfigBase) -> Vec<(u32, Report)> {
+pub async fn report_positions(config: &ConfigBase) -> Option<TracarrError> {
     let config_file = &config.read_config_file().unwrap();
-    let landmarks = config.read_landmark_file();
-    let config = AppConfig::from_config_file(config_file, landmarks);
-    inner(&config).await
+    let landmarks = config.read_landmark_file().unwrap_or_default();
+    let config = AppConfig::from_config_file(config_file, landmarks).expect("Config error");
+    let reports = match inner(&config).await {
+        Ok(reports) => reports,
+        Err(e) => return Some(e),
+    };
+    reports.iter().for_each(|a| {
+        println!("{}", a.1);
+    });
+
+    None
 }
 
-pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
-    let client = traccar_lib::Traccar::new(config.host(), config.token());
+pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Report)>, TracarrError> {
+    let client = traccar_lib::Traccar::new(config.host(), config.token())?;
     let devices = client.list_devices().await;
     let geofences = client.geofences_all().await;
     let landmarks = config.landmarks();
@@ -43,7 +52,7 @@ pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
     let now = Utc::now();
 
     // devices_with_position.iter().for_each(|(device, position)| {
-    devices_with_position
+    Ok(devices_with_position
         .iter()
         .map(|(device, position)| {
             let device_config = config.device_config(device.id);
@@ -59,7 +68,7 @@ pub async fn inner(config: &AppConfig) -> Vec<(u32, Report)> {
                 ),
             )
         })
-        .collect()
+        .collect())
 }
 
 fn report_device(

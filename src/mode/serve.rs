@@ -11,6 +11,7 @@ use crate::{
 use chrono::Utc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+use traccar_lib::TracarrError;
 use zbus::{connection, interface, names::BusName};
 
 struct LocationService {
@@ -32,16 +33,16 @@ impl LocationService {
     }
 }
 
-pub async fn serve(config_dir: &ConfigBase) -> () {
+pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
     let device_locations = Arc::new(Mutex::new(vec![]));
-    let landmarks = config_dir.read_landmark_file();
+    let landmarks = config_dir.read_landmark_file().unwrap_or_default();
     let config_file = config_dir.read_config_file().unwrap();
     let cancel_token = CancellationToken::new();
 
     let token_clone = cancel_token.clone();
 
     ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
-    let config = AppConfig::from_config_file(&config_file, landmarks);
+    let config = AppConfig::from_config_file(&config_file, landmarks).expect("Config error");
 
     let location_clone = Arc::clone(&device_locations);
     tokio::spawn(async move {
@@ -59,7 +60,7 @@ pub async fn serve(config_dir: &ConfigBase) -> () {
             .unwrap();
 
         loop {
-            let reports = inner(&config).await;
+            let reports = inner(&config).await.expect("error fetching positions");
 
             for (id, report) in &reports {
                 dbus_connection
@@ -94,5 +95,6 @@ pub async fn serve(config_dir: &ConfigBase) -> () {
         }
     });
 
-    cancel_token.cancelled().await
+    cancel_token.cancelled().await;
+    None
 }

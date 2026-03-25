@@ -26,25 +26,24 @@ async fn run() {
         None => ConfigBase::default(),
     };
 
-    match args.command {
+    let err = match args.command {
         // Default, list the current position of all devices once
         Some(arguments::Commands::List) | None => {
-            let reports = mode::report_once::report_positions(&config_dir).await;
-            reports.iter().for_each(|a| {
-                println!("{}", a.1);
-            });
+            mode::report_once::report_positions(&config_dir).await
         }
         // Live updates for a single device
         Some(arguments::Commands::Tail) => {
             unimplemented!()
         }
         // Serve a dbus interface
-        Some(arguments::Commands::Serve) => {
-            mode::serve::serve(&config_dir).await;
-        }
+        Some(arguments::Commands::Serve) => mode::serve::serve(&config_dir).await,
 
         // Provide credentials
         Some(arguments::Commands::Login) => mode::login_wizard::run(config_dir),
+    };
+
+    if let Some(err) = err {
+        println!("{err}")
     }
 }
 
