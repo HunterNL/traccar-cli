@@ -6,8 +6,8 @@ use crate::config::ConfigBase;
 mod arguments;
 mod config;
 mod mode;
+mod notify;
 mod report;
-
 #[derive(Debug, Clone)]
 struct Landmark {
     name: String,
