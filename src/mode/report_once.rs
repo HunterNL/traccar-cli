@@ -9,7 +9,7 @@ use geo::Bearing;
 use geo::Distance;
 use geo::Point;
 
-use traccar_lib::DeviceReponse;
+use traccar_lib::Device;
 use traccar_lib::GeoFenceResponse;
 use traccar_lib::Position;
 use traccar_lib::TracarrError;
@@ -30,24 +30,34 @@ pub async fn report_positions(config: &ConfigBase) -> Option<TracarrError> {
         Err(e) => return Some(e),
     };
     reports.iter().for_each(|a| {
-        println!("{}", a.1);
+        println!(
+            "{}",
+            a.1.as_ref()
+                .map_or_else(|| format!("Device #{} unavailable", a.0), |e| e.to_string())
+        );
     });
 
     None
 }
 
-pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Report)>, TracarrError> {
+pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Option<Report>)>, TracarrError> {
     let client = traccar_lib::Traccar::new(config.host(), config.token())?;
-    let devices = client.list_devices().await;
+    let devices = client.list_devices().await?;
     let geofences = client.geofences_all().await;
     let landmarks = config.landmarks();
 
     // Join the actual position to a device
-    let devices_with_position = join_all(devices.into_iter().map(async |device| {
-        let position = client.position_get(device.position_id).await;
-        (device, position)
-    }))
-    .await;
+    let devices_with_position: Vec<(Device, Option<Position>)> =
+        join_all(devices.into_iter().map(async |device| {
+            let position = match device.position_id {
+                Some(n) => Some(client.position_get(n).await),
+                None => None,
+            };
+
+            // let position = client.position_get(device.position_id).await;
+            (device, position)
+        }))
+        .await;
 
     let now = Utc::now();
 
@@ -56,8 +66,7 @@ pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Report)>, TracarrErro
         .iter()
         .map(|(device, position)| {
             let device_config = config.device_config(device.id);
-            (
-                device.id,
+            let report = position.as_ref().map(|position| {
                 report_device(
                     device,
                     position,
@@ -65,14 +74,16 @@ pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Report)>, TracarrErro
                     landmarks,
                     device_config,
                     now,
-                ),
-            )
+                )
+            });
+
+            (device.id, report)
         })
         .collect())
 }
 
 fn report_device(
-    device: &DeviceReponse,
+    device: &Device,
     position: &Position,
     geofences: &[GeoFenceResponse],
     landmarks: &[Landmark],
@@ -169,10 +180,10 @@ mod tests {
 
     #[test]
     fn test_report_geofence() {
-        let device = DeviceReponse {
+        let device = Device {
             id: 0,
             name: "Device".to_owned(),
-            position_id: 1,
+            position_id: Some(1),
         };
 
         let mut position = default_position(); // Void island
@@ -196,10 +207,10 @@ mod tests {
 
     #[test]
     fn test_report_relative() {
-        let device = DeviceReponse {
+        let device = Device {
             id: 0,
             name: "Device".to_owned(),
-            position_id: 1,
+            position_id: Some(1),
         };
 
         let mut position = default_position();
@@ -222,10 +233,10 @@ mod tests {
 
     #[test]
     fn test_report_bare() {
-        let device = DeviceReponse {
+        let device = Device {
             id: 0,
             name: "Device".to_owned(),
-            position_id: 1,
+            position_id: Some(1),
         };
         let mut position = default_position();
         position.geofence_ids = vec![2];

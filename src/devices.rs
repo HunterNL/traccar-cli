@@ -4,7 +4,7 @@ use crate::Traccar;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceReponse {
+struct DeviceReponse {
     pub id: u32,
     pub name: String,
     // pub status: String,
@@ -13,10 +13,32 @@ pub struct DeviceReponse {
     // geofences: Vec<u32>,
 }
 
-impl Traccar {
-    pub async fn list_devices(&self) -> Vec<DeviceReponse> {
-        let response = self.prepare_request("/api/devices").send().await.unwrap();
+pub struct Device {
+    pub id: u32,
+    pub name: String,
+    pub position_id: Option<u32>,
+}
 
-        response.json().await.unwrap()
+impl Device {
+    fn from_response(r: DeviceReponse) -> Self {
+        Self {
+            id: r.id,
+            name: r.name,
+            position_id: match r.position_id {
+                0 => None,
+                a => Some(a),
+            },
+        }
+    }
+}
+
+impl Traccar {
+    pub async fn list_devices(&self) -> Result<Vec<Device>, crate::TracarrError> {
+        let response = self.prepare_request("/api/devices").send().await?;
+        let out: Vec<DeviceReponse> = response.json().await?;
+
+        let out = out.into_iter().map(Device::from_response).collect();
+
+        Ok(out)
     }
 }

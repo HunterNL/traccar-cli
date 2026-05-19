@@ -87,7 +87,16 @@ fn append_age(
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)?;
-        f.write_str(" was in ")?;
+        match &self.position {
+            ReportPosition::RelativeTo {
+                distance: _,
+                bearing: _,
+                name: _,
+            } => f.write_str(" was ")?,
+            ReportPosition::InGeofences(_) => f.write_str(" was in ")?,
+            ReportPosition::BarePosition(_) => f.write_str(" was at ")?,
+        };
+        // f.write_str(" was in ")?;
         f.write_fmt(format_args!("{}", self.position))?;
 
         append_age(f, self.seconds_ago, self.in_timeout)

@@ -59,7 +59,6 @@ fn geofence_movements_from_report(
     old_report: &report::Report,
     new_report: &report::Report,
 ) -> Vec<GeoFenceMovement> {
-    dbg!(&old_report, &new_report);
     assert_eq!(old_report.name, new_report.name);
     let name = &old_report.name;
 
@@ -113,6 +112,17 @@ pub enum GeoFenceAction {
     Entered,
 }
 
+// fn print_source(mut e: &dyn std::error::Error) {
+//     loop {
+//         println!("{e} {e:#?}");
+//         if e.source().is_some() {
+//             e = e.source().unwrap()
+//         } else {
+//             break;
+//         }
+//     }
+// }
+
 pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
     let device_locations = ReportStore::new();
     let landmarks = config_dir.read_landmark_file().unwrap_or_default();
@@ -140,23 +150,43 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
             .unwrap();
 
         loop {
-            let reports = inner(&config).await.expect("error fetching positions");
+            let reports = inner(&config).await; //.expect("error fetching positions");
+
+            if let Err(e) = reports {
+                eprintln!("Error fetching data: {e}");
+                eprintln!("{e:#?}");
+                // print_source(&e);
+                tokio::time::sleep(Duration::from_secs(20)).await;
+                continue;
+            }
+
+            let reports = reports.unwrap();
 
             for (id, report) in &reports {
+                let body = (
+                    id,
+                    report
+                        .as_ref()
+                        .map(|r| &r.position)
+                        // .as_ref()
+                        .map_or("Unavailable".to_string(), |e| e.to_string()),
+                );
+
                 dbus_connection
                     .emit_signal(
                         None::<zbus::BusName>,
                         "/device_positions",
                         "life.vern.traccar",
                         "position_update",
-                        &(id, report.position.to_string()),
+                        &body,
                     )
                     .await
                     .unwrap();
             }
             let next_report_time = reports
                 .iter()
-                .filter_map(|a| a.1.next_update_expected)
+                .filter(|a| a.1.is_some())
+                .filter_map(|a| a.1.as_ref().unwrap().next_update_expected)
                 .map(|a| a + Duration::from_secs(5)) //Add 5 seconds leeway for Traccar to handle the update
                 .min();
 
@@ -168,7 +198,8 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
 
             let movements: Vec<GeoFenceMovement> = reports
                 .into_iter()
-                .flat_map(|report| location_clone.add_report(report.0, report.1))
+                .filter(|e| e.1.is_some())
+                .flat_map(|report| location_clone.add_report(report.0, report.1.unwrap()))
                 .collect();
 
             join_all(movements.iter().map(notify_for_movement)).await;

@@ -29,7 +29,24 @@ impl Traccar {
         let req = self.prepare_request("/api/positions");
         let req = req.query(&[("id", position_id)]);
 
-        let res: Vec<PositionResponse> = req.send().await.unwrap().json().await.unwrap();
+        // let text = req
+        //     .try_clone()
+        //     .unwrap()
+        //     .send()
+        //     .await
+        //     .unwrap()
+        //     .text()
+        //     .await
+        //     .unwrap();
+
+        let res: Result<Vec<PositionResponse>, _> = req.send().await.unwrap().json().await;
+
+        if res.is_err() {
+            let e = res.unwrap_err();
+            panic!()
+        }
+
+        let res = res.unwrap();
 
         res.into_iter()
             .map(|a| Position {

@@ -5,7 +5,7 @@ mod geofences;
 mod positions;
 mod session;
 
-pub use devices::DeviceReponse;
+pub use devices::Device;
 pub use geofences::GeoFenceResponse;
 pub use positions::Position;
 pub use positions::PositionResponse;
@@ -18,8 +18,10 @@ pub struct Traccar {
 
 #[derive(thiserror::Error, Debug)]
 pub enum TracarrError {
-    #[error("Invalid host")]
-    InvalidHost(#[from] reqwest::Error),
+    #[error("Network error: {0}")]
+    NetworkError(#[from] reqwest::Error),
+    #[error("Json parsing error")]
+    DecodingError(#[from] serde_json::Error),
 }
 
 // #[derive(Deserialize, Debug)]
