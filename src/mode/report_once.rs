@@ -238,7 +238,7 @@ mod tests {
 
         assert_eq!(
             report.to_string(),
-            "Device was 156900m SW of Landmark 1 seconds ago"
+            "Device was 157km SW of Landmark 1 seconds ago"
         )
     }
 

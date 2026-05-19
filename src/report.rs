@@ -51,7 +51,7 @@ impl Display for ReportPosition {
             }
 
             ReportPosition::BarePosition(point) => {
-                f.write_fmt(format_args!("at {},{}", point.x(), point.y()))
+                f.write_fmt(format_args!("{},{}", point.x(), point.y()))
             }
         }
     }
