@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::Traccar;
+use crate::{TracarrError, Traccar};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +25,7 @@ pub struct Position {
 }
 
 impl Traccar {
-    pub async fn position_get(&self, position_id: u32) -> Position {
+    pub async fn position_get(&self, position_id: u32) -> Result<Position, TracarrError> {
         let req = self.prepare_request("/api/positions");
         let req = req.query(&[("id", position_id)]);
 
@@ -39,14 +39,7 @@ impl Traccar {
         //     .await
         //     .unwrap();
 
-        let res: Result<Vec<PositionResponse>, _> = req.send().await.unwrap().json().await;
-
-        if res.is_err() {
-            let e = res.unwrap_err();
-            panic!()
-        }
-
-        let res = res.unwrap();
+        let res: Vec<PositionResponse> = req.send().await?.json().await?;
 
         res.into_iter()
             .map(|a| Position {
@@ -59,6 +52,6 @@ impl Traccar {
                 device_id: a.device_id,
             })
             .next()
-            .unwrap()
+            .ok_or(TracarrError::EmptyPositionResponse)
     }
 }

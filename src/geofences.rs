@@ -14,13 +14,12 @@ pub struct GeoFenceResponse {
 }
 
 impl Traccar {
-    pub async fn geofences_all(&self) -> Vec<GeoFenceResponse> {
+    pub async fn geofences_all(&self) -> Result<Vec<GeoFenceResponse>, crate::TracarrError> {
         let req = self.prepare_request("/api/geofences");
         let req = req.query(&[("all", "true")]);
 
-        // let res: String = req.send().await.unwrap().text().await.unwrap();
-        let res: Vec<GeoFenceResponse> = req.send().await.unwrap().json().await.unwrap();
+        let res: Vec<GeoFenceResponse> = req.send().await?.json().await?;
 
-        res
+        Ok(res)
     }
 }

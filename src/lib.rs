@@ -20,8 +20,10 @@ pub struct Traccar {
 pub enum TracarrError {
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
-    #[error("Json parsing error")]
+    #[error("Json parsing error: {0}")]
     DecodingError(#[from] serde_json::Error),
+    #[error("Empty position response")]
+    EmptyPositionResponse,
 }
 
 // #[derive(Deserialize, Debug)]

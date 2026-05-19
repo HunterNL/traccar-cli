@@ -43,7 +43,7 @@ pub async fn report_positions(config: &ConfigBase) -> Option<TracarrError> {
 pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Option<Report>)>, TracarrError> {
     let client = traccar_lib::Traccar::new(config.host(), config.token())?;
     let devices = client.list_devices().await?;
-    let geofences = client.geofences_all().await;
+    let geofences = client.geofences_all().await?;
     let landmarks = config.landmarks();
 
     // Join the actual position to a device
@@ -51,6 +51,17 @@ pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Option<Report>)>, Tra
         join_all(devices.into_iter().map(async |device| {
             let position = match device.position_id {
                 Some(n) => Some(client.position_get(n).await),
+                None => None,
+            };
+
+            let position = match position {
+                Some(Ok(p)) => Some(p),
+                Some(Err(e)) => {
+                    eprintln!("Error getting position: {e:?}");
+                    // TODO Consider bubbling this up
+                    None
+                }
+
                 None => None,
             };
 
