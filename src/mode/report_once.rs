@@ -178,15 +178,7 @@ mod tests {
     use super::*;
 
     fn default_position() -> Position {
-        Position {
-            id: 0,
-            latitude: 0.0,
-            longitude: 0.0,
-            altitude: 0.0,
-            fix_time: DateTime::from_timestamp_nanos(0),
-            geofence_ids: vec![],
-            device_id: 0,
-        }
+        Default::default()
     }
 
     #[test]
