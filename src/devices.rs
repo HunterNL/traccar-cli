@@ -35,7 +35,7 @@ impl Device {
 impl Traccar {
     pub async fn list_devices(&self) -> Result<Vec<Device>, crate::TracarrError> {
         let response = self.prepare_request("/api/devices").send().await?;
-        let out: Vec<DeviceReponse> = response.json().await?;
+        let out: Vec<DeviceReponse> = Self::get_json(response).await?;
 
         let out = out.into_iter().map(Device::from_response).collect();
 

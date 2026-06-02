@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     config::{AppConfig, ConfigBase},
-    mode::report_once::inner,
+    mode::report_once::fetch_positions,
     notify::send_notification,
     report,
 };
@@ -150,7 +150,7 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
             .unwrap();
 
         loop {
-            let reports = inner(&config).await; //.expect("error fetching positions");
+            let reports = fetch_positions(&config).await; //.expect("error fetching positions");
 
             if let Err(e) = reports {
                 eprintln!("Error fetching data: {e}");

@@ -57,6 +57,7 @@ impl Traccar {
     pub async fn position_get(&self, position_id: u32) -> Result<Position, TracarrError> {
         let req = self.prepare_request("/api/positions");
         let req = req.query(&[("id", position_id)]);
+        let response = req.send().await?;
 
         // let text = req
         //     .try_clone()
@@ -68,7 +69,7 @@ impl Traccar {
         //     .await
         //     .unwrap();
 
-        let res: Vec<PositionResponse> = req.send().await?.json().await?;
+        let res: Vec<PositionResponse> = Self::get_json(response).await?;
 
         res.into_iter()
             .map(|a| a.into_position())

@@ -1,3 +1,4 @@
+use reqwest::Response;
 use reqwest::{IntoUrl, Url};
 
 mod devices;
@@ -9,6 +10,7 @@ pub use devices::Device;
 pub use geofences::GeoFenceResponse;
 pub use positions::Position;
 pub use positions::PositionResponse;
+use serde::de::DeserializeOwned;
 
 pub struct Traccar {
     token: String,
@@ -24,6 +26,10 @@ pub enum TracarrError {
     DecodingError(#[from] serde_json::Error),
     #[error("Empty position response")]
     EmptyPositionResponse,
+    #[error("Unauthorized")]
+    Unauthorized,
+    #[error("Other")]
+    Other,
 }
 
 // #[derive(Deserialize, Debug)]
@@ -47,5 +53,16 @@ impl Traccar {
     fn prepare_request(&self, path: &str) -> reqwest::RequestBuilder {
         let path = self.host.clone().join(path).unwrap();
         self.http_client.get(path).bearer_auth(self.token.clone())
+    }
+
+    async fn get_json<T: DeserializeOwned>(response: Response) -> Result<T, TracarrError> {
+        let status = response.status();
+        if status.is_success() {
+            Ok(response.json().await?)
+        } else if status.as_u16() == 401 {
+            Err(TracarrError::Unauthorized)
+        } else {
+            Err(TracarrError::Other)
+        }
     }
 }

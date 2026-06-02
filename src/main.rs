@@ -29,7 +29,7 @@ async fn run() {
     let err = match args.command {
         // Default, list the current position of all devices once
         Some(arguments::Commands::List) | None => {
-            mode::report_once::report_positions(&config_dir).await
+            mode::report_once::print_positions(&config_dir).await
         }
         // Live updates for a single device
         Some(arguments::Commands::Tail) => {
@@ -43,7 +43,7 @@ async fn run() {
     };
 
     if let Some(err) = err {
-        println!("{err}")
+        println!("Error: {err}")
     }
 }
 

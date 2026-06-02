@@ -21,11 +21,11 @@ use crate::config::DeviceConfig;
 use crate::report::Report;
 use crate::report::ReportPosition;
 
-pub async fn report_positions(config: &ConfigBase) -> Option<TracarrError> {
+pub async fn print_positions(config: &ConfigBase) -> Option<TracarrError> {
     let config_file = &config.read_config_file().unwrap();
     let landmarks = config.read_landmark_file().unwrap_or_default();
     let config = AppConfig::from_config_file(config_file, landmarks).expect("Config error");
-    let reports = match inner(&config).await {
+    let reports = match fetch_positions(&config).await {
         Ok(reports) => reports,
         Err(e) => return Some(e),
     };
@@ -40,7 +40,9 @@ pub async fn report_positions(config: &ConfigBase) -> Option<TracarrError> {
     None
 }
 
-pub async fn inner(config: &AppConfig) -> Result<Vec<(u32, Option<Report>)>, TracarrError> {
+pub async fn fetch_positions(
+    config: &AppConfig,
+) -> Result<Vec<(u32, Option<Report>)>, TracarrError> {
     let client = traccar_lib::Traccar::new(config.host(), config.token())?;
     let devices = client.list_devices().await?;
     let geofences = client.geofences_all().await?;
