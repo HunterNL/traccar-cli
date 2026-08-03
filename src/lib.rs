@@ -26,10 +26,12 @@ pub enum TracarrError {
     DecodingError(#[from] serde_json::Error),
     #[error("Empty position response")]
     EmptyPositionResponse,
-    #[error("Unauthorized")]
+    #[error("Unauthorized, token likely expired")]
     Unauthorized,
-    #[error("Other")]
-    Other,
+    #[error("HTTP transport error, {0} {1}")]
+    HttpError(u16, &'static str),
+    // #[error("Other")]
+    // Other,
 }
 
 // #[derive(Deserialize, Debug)]
@@ -61,8 +63,14 @@ impl Traccar {
             Ok(response.json().await?)
         } else if status.as_u16() == 401 {
             Err(TracarrError::Unauthorized)
+            // So turns out traccar is being a potato, it sends 401 when your token is missing
+            // yet a bare 400 if your token is expired
+            // making this kinda useless
         } else {
-            Err(TracarrError::Other)
+            Err(TracarrError::HttpError(
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("unknown reason"),
+            ))
         }
     }
 }
