@@ -33,7 +33,7 @@ impl PositionResponse {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Position {
     pub id: u32,
     pub latitude: f64,

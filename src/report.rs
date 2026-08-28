@@ -1,7 +1,8 @@
 use core::fmt;
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 use chrono::{DateTime, Utc};
+use duration_human::DurationHuman;
 use geo::Point;
 
 use crate::format_distance;
@@ -74,13 +75,16 @@ fn append_age(
         OwoColorize,
         colors::{Green, Red},
     };
+    let duration = Duration::from_secs(seconds_ago as u64);
+    let duration = DurationHuman::from(duration);
+
     match in_timeout {
         // Don't format if the option is not provided
-        None => f.write_fmt(format_args!(" {} seconds ago", seconds_ago)),
+        None => f.write_fmt(format_args!(" {:#} ago", duration)),
 
         // Color green or red depending on timeout setting
-        Some(true) => f.write_fmt(format_args!(" {} seconds ago", seconds_ago.fg::<Green>())),
-        Some(false) => f.write_fmt(format_args!(" {} seconds ago", seconds_ago.fg::<Red>())),
+        Some(true) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Green>())),
+        Some(false) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Red>())),
     }
 }
 

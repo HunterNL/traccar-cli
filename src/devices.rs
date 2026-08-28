@@ -13,6 +13,7 @@ struct DeviceReponse {
     // geofences: Vec<u32>,
 }
 
+#[derive(Debug)]
 pub struct Device {
     pub id: u32,
     pub name: String,

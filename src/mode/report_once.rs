@@ -47,6 +47,7 @@ pub async fn fetch_positions(
     let devices = client.list_devices().await?;
     let geofences = client.geofences_all().await?;
     let landmarks = config.landmarks();
+    // let session = client.session_get().await;
 
     // Join the actual position to a device
     let devices_with_position: Vec<(Device, Option<Position>)> =
