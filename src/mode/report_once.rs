@@ -78,8 +78,11 @@ pub async fn fetch_positions(
     // devices_with_position.iter().for_each(|(device, position)| {
     Ok(devices_with_position
         .iter()
-        .map(|(device, position)| {
+        .filter_map(|(device, position)| {
             let device_config = config.device_config(device.id);
+            if device_config.is_some_and(|config| config.hidden.is_some_and(|a| a)) {
+                return None;
+            }
             let report = position.as_ref().map(|position| {
                 report_device(
                     device,
@@ -91,7 +94,7 @@ pub async fn fetch_positions(
                 )
             });
 
-            (device.id, report)
+            Some((device.id, report))
         })
         .collect())
 }
