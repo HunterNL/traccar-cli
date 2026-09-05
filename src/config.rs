@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use geo::Point;
 use serde::{Deserialize, Serialize};
@@ -51,7 +55,7 @@ pub struct ConfigBase {
 }
 
 impl ConfigBase {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: &Path) -> Self {
         if !path.is_dir() {
             panic!("Path passed to ConfigBase::new is not a directory");
         }
@@ -100,7 +104,7 @@ impl ConfigBase {
 
 impl Default for ConfigBase {
     fn default() -> Self {
-        Self::new(dirs::config_local_dir().unwrap().join("traccar"))
+        Self::new(dirs::config_local_dir().unwrap().join("traccar").as_ref())
     }
 }
 

@@ -2,9 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-#[derive(Debug, Parser)] // requires `derive` feature
-// #[command(name = "git")]
-// #[command(about = "A fictional versioning CLI", long_about = None)]
+#[derive(Debug, Parser)]
 pub struct Cli {
     // Primary command to run
     #[command(subcommand)]
@@ -22,7 +20,10 @@ pub enum Commands {
     /// Serve dbus interface
     Serve,
     /// List all devices and their position
-    List,
+    List {
+        #[arg(short, long)]
+        recent: bool,
+    },
     /// Set host and credentials
     Login,
 }

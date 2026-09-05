@@ -21,15 +21,20 @@ fn main() {
 #[tokio::main]
 async fn run() {
     let args = arguments::Cli::parse();
-    let config_dir = match args.config_dir {
+    let config_dir = match args.config_dir.as_ref() {
         Some(path) => ConfigBase::new(path),
         None => ConfigBase::default(),
     };
 
     let err = match args.command {
+        None => mode::report_once::print_positions(&config_dir).await,
         // Default, list the current position of all devices once
-        Some(arguments::Commands::List) | None => {
-            mode::report_once::print_positions(&config_dir).await
+        Some(arguments::Commands::List { recent }) => {
+            if recent {
+                mode::report_once::print_history(&config_dir).await
+            } else {
+                mode::report_once::print_positions(&config_dir).await
+            }
         }
         // Live updates for a single device
         Some(arguments::Commands::Tail) => {

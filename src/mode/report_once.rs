@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use chrono::DateTime;
 
+use chrono::Days;
 use futures::future::join_all;
 
 use chrono::Utc;
@@ -99,6 +100,74 @@ pub async fn fetch_positions(
         .collect())
 }
 
+pub async fn fetch_position_history(
+    config: &AppConfig,
+) -> Result<Vec<(u32, Option<Vec<Report>>)>, TracarrError> {
+    let client = traccar_lib::Traccar::new(config.host(), config.token())?;
+    let devices = client.list_devices().await?;
+    let geofences = client.geofences_all().await?;
+    let landmarks = config.landmarks();
+
+    let now = Utc::now();
+    let a_day_ago = now
+        .checked_sub_days(Days::new(1))
+        .expect("daylight saving times oopsie");
+
+    // For every device, get the location history
+    let devices_with_position: Vec<(Device, Option<Vec<Position>>)> =
+        join_all(devices.into_iter().map(async |device| {
+            let position = match device.position_id {
+                Some(_) => Some(client.position_history(device.id, a_day_ago, now).await),
+                None => None,
+            };
+
+            let position = match position {
+                Some(Ok(p)) => Some(p),
+                Some(Err(e)) => {
+                    eprintln!("Error getting position: {e:?}");
+                    // TODO Consider bubbling this up
+                    None
+                }
+
+                None => None,
+            };
+
+            // let position = client.position_get(device.position_id).await;
+            (device, position)
+        }))
+        .await;
+
+    let now = Utc::now();
+
+    // devices_with_position.iter().for_each(|(device, position)| {
+    Ok(devices_with_position
+        .iter()
+        .filter_map(|(device, positions)| {
+            let device_config = config.device_config(device.id);
+            if device_config.is_some_and(|config| config.hidden.is_some_and(|a| a)) {
+                return None;
+            }
+            let report = positions.as_ref().map(|position| {
+                position
+                    .iter()
+                    .map(|pos| {
+                        report_device(
+                            device,
+                            pos,
+                            geofences.as_slice(),
+                            landmarks,
+                            device_config,
+                            now,
+                        )
+                    })
+                    .collect()
+            });
+
+            Some((device.id, report))
+        })
+        .collect())
+}
+
 fn report_device(
     device: &Device,
     position: &Position,
@@ -174,6 +243,26 @@ fn report_device(
         seconds_ago,
         expected_next_fix_time,
     )
+}
+
+pub(crate) async fn print_history(config: &ConfigBase) -> Option<TracarrError> {
+    let config_file = &config.read_config_file().unwrap();
+    let landmarks = config.read_landmark_file().unwrap_or_default();
+    let config = AppConfig::from_config_file(config_file, landmarks).expect("Config error");
+    let devices = match fetch_position_history(&config).await {
+        Ok(reports) => reports,
+        Err(e) => return Some(e),
+    };
+
+    devices.iter().for_each(|(_, reports)| {
+        reports
+            .as_ref()
+            .unwrap()
+            .iter()
+            .for_each(|report| println!("{}", report));
+    });
+
+    None
 }
 
 #[cfg(test)]

@@ -76,4 +76,40 @@ impl Traccar {
             .next()
             .ok_or(TracarrError::EmptyPositionResponse)
     }
+
+    pub async fn position_history(
+        &self,
+        device_id: u32,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<Position>, TracarrError> {
+        let from_str = from.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let to_str = to.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        let req = self.prepare_request("/api/positions");
+        let req = req.query(&[
+            ("deviceId", device_id.to_string()),
+            ("from", from_str),
+            ("to", to_str),
+        ]);
+        // let req = req.query(&[("to", to.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)]);
+        // let text = req
+        //     .try_clone()
+        //     .unwrap()
+        //     .send()
+        //     .await
+        //     .unwrap()
+        //     .text()
+        //     .await
+        //     .unwrap();
+
+        let response = req.send().await?;
+
+        let res: Vec<PositionResponse> = Self::get_json(response).await?;
+
+        Ok(res
+            .into_iter()
+            .map(|a| a.into_position())
+            .collect::<Vec<_>>())
+    }
 }
