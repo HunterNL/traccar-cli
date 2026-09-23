@@ -1,13 +1,15 @@
 use clap::Parser;
 use geo::Point;
+use tokio_util::sync::CancellationToken;
 
-use crate::config::ConfigBase;
+use crate::config::{AppConfig, ConfigBase};
 
 mod arguments;
 mod config;
 mod mode;
 mod notify;
 mod report;
+
 #[derive(Debug, Clone)]
 struct Landmark {
     name: String,
@@ -25,6 +27,7 @@ async fn run() {
         Some(path) => ConfigBase::new(path),
         None => ConfigBase::default(),
     };
+    let token = CancellationToken::new();
 
     let err = match args.command {
         None => mode::report_once::print_positions(&config_dir).await,
@@ -37,8 +40,12 @@ async fn run() {
             }
         }
         // Live updates for a single device
-        Some(arguments::Commands::Tail) => {
-            unimplemented!()
+        Some(arguments::Commands::Tail { device_id }) => {
+            let config = config_dir.read_config_file().unwrap();
+            let landmarks = config_dir.read_landmark_file().unwrap_or_default();
+            let config2 = AppConfig::from_config_file(&config, landmarks.clone()).unwrap();
+            mode::live_tail::tail_devices(config2, token, device_id, &landmarks).await;
+            None
         }
         // Serve a dbus interface
         Some(arguments::Commands::Serve) => mode::serve::serve(&config_dir).await,

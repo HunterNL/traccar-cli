@@ -4,7 +4,7 @@ use crate::Traccar;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DeviceReponse {
+pub struct DeviceReponse {
     pub id: u32,
     pub name: String,
     // pub status: String,

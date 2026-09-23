@@ -16,7 +16,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Unimplemented
-    Tail,
+    Tail { device_id: u32 },
     /// Serve dbus interface
     Serve,
     /// List all devices and their position

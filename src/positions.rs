@@ -19,7 +19,7 @@ pub struct PositionResponse {
 }
 
 impl PositionResponse {
-    fn into_position(self) -> Position {
+    pub fn into_position(self) -> Position {
         Position {
             id: self.id,
             latitude: self.latitude,
@@ -33,7 +33,7 @@ impl PositionResponse {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Position {
     pub id: u32,
     pub latitude: f64,

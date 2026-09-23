@@ -168,7 +168,7 @@ pub async fn fetch_position_history(
         .collect())
 }
 
-fn report_device(
+pub fn report_device(
     device: &Device,
     position: &Position,
     geofences: &[GeoFenceResponse],
