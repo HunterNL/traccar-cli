@@ -75,7 +75,7 @@ impl Reporter {
             if !fences.is_empty() {
                 return Report::new(
                     name.to_owned(),
-                    ReportPosition::InGeofences(fences.iter().map(|a| a.name.to_owned()).collect()),
+                    ReportPosition::InGeofences(fences.iter().map(|a| a.name.clone()).collect()),
                     in_timeout,
                     seconds_ago,
                     expected_next_fix_time,
@@ -105,7 +105,7 @@ impl Reporter {
                 ReportPosition::RelativeTo {
                     distance,
                     bearing,
-                    name: landmark.name.to_owned(),
+                    name: landmark.name.clone(),
                 }
             })
         };

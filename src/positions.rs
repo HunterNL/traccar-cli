@@ -49,7 +49,7 @@ impl Position {
     pub fn battery_level(&self) -> Option<f64> {
         self.attributes
             .get("battery")
-            .and_then(|json| json.as_f64())
+            .and_then(serde_json::Value::as_f64)
     }
 }
 
@@ -72,7 +72,7 @@ impl Traccar {
         let res: Vec<PositionResponse> = Self::get_json(response).await?;
 
         res.into_iter()
-            .map(|a| a.into_position())
+            .map(PositionResponse::into_position)
             .next()
             .ok_or(TracarrError::EmptyPositionResponse)
     }
@@ -109,7 +109,7 @@ impl Traccar {
 
         Ok(res
             .into_iter()
-            .map(|a| a.into_position())
+            .map(PositionResponse::into_position)
             .collect::<Vec<_>>())
     }
 }

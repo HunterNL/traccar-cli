@@ -83,20 +83,17 @@ impl Tail {
         // We got a history and we've send an update before, compare to see if we've got a new newest
         let recent_update = self.positions.iter().find(|a| a.id == last_sent_update);
 
-        match recent_update {
-            Some(recent_update) => {
-                if most_recent_position.fix_time > recent_update.fix_time {
-                    self.last_sent_update = Some(most_recent_position.id);
-                    true
-                } else {
-                    false
-                }
-            }
-            None => {
-                // oops, somehow the most recent postion is not to be found in the history?!
+        if let Some(recent_update) = recent_update {
+            if most_recent_position.fix_time > recent_update.fix_time {
                 self.last_sent_update = Some(most_recent_position.id);
                 true
+            } else {
+                false
             }
+        } else {
+            // oops, somehow the most recent postion is not to be found in the history?!
+            self.last_sent_update = Some(most_recent_position.id);
+            true
         }
     }
 
@@ -140,11 +137,11 @@ where
                 // dbg!(reporter);
                 let report = reporter.report_device(device, recent, now);
 
-                println!("{}", report);
+                println!("{report}");
             }
 
             // dbg!(tail.most_recent().unwrap().fix_time);
-        };
+        }
     } else if let Ok(Message::Pong(_)) = msg {
         // dbg!("Pong");
     } else {
@@ -179,7 +176,7 @@ pub async fn tail_devices(
     let a = tokio_tungstenite::Connector::NativeTls(a);
     let res = connect_async_tls_with_config(request, None, false, Some(a)).await;
     if res.is_err() {
-        println!("{res:?}")
+        println!("{res:?}");
     }
 
     let (streams, _) = res.unwrap();
@@ -194,10 +191,10 @@ pub async fn tail_devices(
     tokio::spawn(async move {
         loop {
             tokio::select! {
-               _= token_keepalive.cancelled() => {
+               ()= token_keepalive.cancelled() => {
                     break;
                 },
-                _ = sleep(KEEPALIVE_INTERVAL) => {
+                () = sleep(KEEPALIVE_INTERVAL) => {
                     // println!("Sending ping");
                     write_stream.send(Message::Ping(Vec::new().into())).await.unwrap();
                 }
@@ -209,7 +206,7 @@ pub async fn tail_devices(
     // Actual worker, handles receiving messages
     loop {
         tokio::select! {
-            _ = cancel_token.cancelled() => {
+            () = cancel_token.cancelled() => {
                 break
             },
             msg = read_stream.next() => {

@@ -7,6 +7,6 @@ pub async fn send_notification(title: &str, content: &str) {
         .show_async()
         .await;
     if let Err(e) = handle {
-        eprintln!("Error sending notification: {e}")
+        eprintln!("Error sending notification: {e}");
     }
 }

@@ -74,12 +74,12 @@ fn append_age(
         OwoColorize,
         colors::{Green, Red},
     };
-    let duration = Duration::from_secs(seconds_ago as u64);
+    let duration = Duration::from_secs(u64::from(seconds_ago));
     let duration = DurationHuman::from(duration);
 
     match in_timeout {
         // Don't format if the option is not provided
-        None => f.write_fmt(format_args!(" {:#} ago", duration)),
+        None => f.write_fmt(format_args!(" {duration:#} ago")),
 
         // Color green or red depending on timeout setting
         Some(true) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Green>())),
@@ -98,7 +98,7 @@ impl Display for Report {
             } => f.write_str(" was ")?,
             ReportPosition::InGeofences(_) => f.write_str(" was in ")?,
             ReportPosition::BarePosition(_) => f.write_str(" was at ")?,
-        };
+        }
         // f.write_str(" was in ")?;
         f.write_fmt(format_args!("{}", self.position))?;
 

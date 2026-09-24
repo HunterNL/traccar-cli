@@ -50,9 +50,7 @@ pub struct ConfigBase {
 
 impl ConfigBase {
     pub fn new(path: &Path) -> Self {
-        if !path.is_dir() {
-            panic!("Path passed to ConfigBase::new is not a directory");
-        }
+        assert!(path.is_dir(), "Path passed to ConfigBase::new is not a directory");
         let path = path.canonicalize().expect("to canonicalize path");
         Self {
             landmarks: path.join("landmarks.json"),

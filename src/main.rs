@@ -59,6 +59,6 @@ async fn run() {
     };
 
     if let Some(err) = err {
-        println!("Error: {err}")
+        println!("Error: {err}");
     }
 }
