@@ -83,6 +83,7 @@ impl Reporter {
             in_timeout,
             position.fix_time,
             self.time_format.clone(),
+            position.attributes.clone(),
         )
     }
 

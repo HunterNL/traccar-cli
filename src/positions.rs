@@ -42,7 +42,7 @@ pub struct Position {
     pub fix_time: DateTime<Utc>,
     pub geofence_ids: Vec<u32>,
     pub device_id: u32,
-    attributes: HashMap<String, serde_json::Value>,
+    pub attributes: HashMap<String, serde_json::Value>,
 }
 
 impl Position {

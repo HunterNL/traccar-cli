@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 
 use chrono::{DateTime, Local, Utc};
 use duration_human::DurationHuman;
@@ -65,7 +65,7 @@ pub struct Report {
     pub in_timeout: Option<bool>,
     pub fix_time: DateTime<Utc>,
     pub time_format: TimeFormat, // pub seconds_ago: u32,
-                                 // pub next_update_expected: Option<DateTime<Utc>>,
+    pub attributes: HashMap<String, serde_json::Value>, // pub next_update_expected: Option<DateTime<Utc>>,
 }
 
 impl Display for Report {
@@ -84,7 +84,10 @@ impl Display for Report {
         // f.write_str(" was in ")?;
         f.write_fmt(format_args!("{}", self.position))?;
 
-        self.append_age(f, now)
+        self.append_age(f, now)?;
+        f.write_str(" ")?;
+
+        self.append_attributes(f)
     }
 }
 
@@ -95,6 +98,7 @@ impl Report {
         in_timeout: Option<bool>,
         fix_time: DateTime<Utc>, // predicted_update: Option<DateTime<Utc>>,
         time_format: TimeFormat,
+        attributes: HashMap<String, serde_json::Value>,
     ) -> Self {
         Self {
             name,
@@ -102,6 +106,7 @@ impl Report {
             in_timeout,
             fix_time,
             time_format,
+            attributes,
         }
     }
 
@@ -149,6 +154,20 @@ impl Report {
 
         // let duration = Duration::from_secs(u64::from());
         // let duration = DurationHuman::from(duration);
+    }
+
+    fn alarms(&self) -> Vec<&str> {
+        if let Some(serde_json::Value::String(alarm_str)) = self.attributes.get("alarm") {
+            // Traccar is being a potato as usual, alarms can be a comma seperated string
+            alarm_str.split(',').collect()
+        } else {
+            vec![]
+        }
+    }
+    fn append_attributes(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.alarms()
+            .iter()
+            .try_for_each(|alarm| write!(f, "!{} ", alarm))
     }
 }
 fn bearing_to_compass_dir(bearing: f64) -> &'static str {
