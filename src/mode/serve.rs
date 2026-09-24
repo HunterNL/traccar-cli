@@ -7,23 +7,22 @@ use crate::{
     config::{AppConfig, ConfigBase},
     mode::report_once::fetch_positions,
     notify::send_notification,
-    report,
 };
 mod zbus;
 use chrono::Utc;
 use futures::future::join_all;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use traccar_lib::TracarrError;
+use traccar_lib::{Device, Position, Report, Reporter, TracarrError};
 
-struct ReportStore(Arc<Mutex<Vec<(u32, report::Report)>>>);
+struct ReportStore(Arc<Mutex<Vec<(u32, Report)>>>);
 
 impl ReportStore {
     fn new() -> Self {
         Self(Arc::new(Mutex::new(vec![])))
     }
 
-    pub fn add_report(&mut self, device_id: u32, report: report::Report) -> Vec<GeoFenceMovement> {
+    pub fn add_report(&mut self, device_id: u32, report: Report) -> Vec<GeoFenceMovement> {
         let mut inner = self.0.lock().unwrap();
 
         let existing_entry = inner.iter_mut().find(|a| a.0 == device_id);
@@ -41,7 +40,7 @@ impl ReportStore {
         movements
     }
 
-    pub fn get_by_id(&self, id: u32) -> Option<(u32, report::Report)> {
+    pub fn get_by_id(&self, id: u32) -> Option<(u32, Report)> {
         self.0
             .lock()
             .unwrap()
@@ -56,8 +55,8 @@ impl ReportStore {
 }
 
 fn geofence_movements_from_report(
-    old_report: &report::Report,
-    new_report: &report::Report,
+    old_report: &Report,
+    new_report: &Report,
 ) -> Vec<GeoFenceMovement> {
     assert_eq!(old_report.name, new_report.name);
     let name = &old_report.name;
@@ -122,8 +121,14 @@ pub enum GeoFenceAction {
 //         }
 //     }
 // }
+//
+//
 
-pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
+// pub fn earlier<T: TimeZone>(t1: DateTime<T>, t2: DateTime<T>) -> DateTime<T> {
+//     if t1 < t2 { t1 } else { t2 }
+// }
+
+pub async fn serve(config_dir: &ConfigBase, reporter: Reporter) -> Option<TracarrError> {
     let device_locations = ReportStore::new();
     let landmarks = config_dir.read_landmark_file().unwrap_or_default();
     let config_file = config_dir.read_config_file().unwrap();
@@ -132,7 +137,13 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
     let token_clone = cancel_token.clone();
 
     ctrlc::set_handler(move || token_clone.cancel()).expect("Error setting Ctrl-C handler");
-    let config = AppConfig::from_config_file(&config_file, landmarks).expect("Config error");
+    let config = AppConfig::from_config_file(&config_file).expect("Config error");
+    let client = traccar_lib::Traccar::new(config.host(), config.token()).unwrap();
+    let geofences = client.geofences_all().await.unwrap();
+
+    let mut reporter = reporter;
+    reporter.landmarks_set(&landmarks);
+    reporter.geofences_set(&geofences);
 
     let mut location_clone = device_locations.clone();
     tokio::spawn(async move {
@@ -150,9 +161,9 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
             .unwrap();
 
         loop {
-            let reports = fetch_positions(&config).await; //.expect("error fetching positions");
+            let devices = fetch_positions(&client).await; //.expect("error fetching positions");
 
-            if let Err(e) = reports {
+            if let Err(e) = devices {
                 eprintln!("Error fetching data: {e}");
                 eprintln!("{e:#?}");
                 // print_source(&e);
@@ -160,17 +171,22 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
                 continue;
             }
 
-            let reports = reports.unwrap();
-
-            for (id, report) in &reports {
-                let body = (
-                    id,
-                    report
+            let now = Utc::now();
+            let devices: Vec<(Device, Position, Report)> = devices
+                .unwrap()
+                .into_iter()
+                .filter_map(|(device, position)| {
+                    let report = position
                         .as_ref()
-                        .map(|r| &r.position)
-                        // .as_ref()
-                        .map_or("Unavailable".to_string(), |e| e.to_string()),
-                );
+                        .map(|r| reporter.report_device(&device, r, now))?;
+                    Some((device, position?, report))
+                })
+                .collect();
+
+            // let mut next_update_time = None;
+
+            for (_, _, report) in &devices {
+                let body = report.position.to_string();
 
                 dbus_connection
                     .emit_signal(
@@ -183,23 +199,24 @@ pub async fn serve(config_dir: &ConfigBase) -> Option<TracarrError> {
                     .await
                     .unwrap();
             }
-            let next_report_time = reports
-                .iter()
-                .filter(|a| a.1.is_some())
-                .filter_map(|a| a.1.as_ref().unwrap().next_update_expected)
-                .map(|a| a + Duration::from_secs(5)) //Add 5 seconds leeway for Traccar to handle the update
-                .min();
 
-            let sleep_duration: Duration = next_report_time
+            // Get the earliest possible refresh
+
+            let next_update_time = devices
+                .iter()
+                .filter_map(|a| a.2.next_update_expected)
+                .min()
+                .map(|a| a + Duration::from_secs(5));
+
+            let sleep_duration: Duration = next_update_time
                 .map(|date| date - Utc::now())
                 .and_then(|delta| delta.to_std().ok())
                 // .and_then(|a| a.try_into().ok())
                 .unwrap_or(Duration::from_secs(30));
 
-            let movements: Vec<GeoFenceMovement> = reports
+            let movements: Vec<GeoFenceMovement> = devices
                 .into_iter()
-                .filter(|e| e.1.is_some())
-                .flat_map(|report| location_clone.add_report(report.0, report.1.unwrap()))
+                .flat_map(|report| location_clone.add_report(report.1.device_id, report.2))
                 .collect();
 
             join_all(movements.iter().map(notify_for_movement)).await;

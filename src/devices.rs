@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::Traccar;
+use crate::{TracarrError, Traccar};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +18,14 @@ pub struct Device {
     pub id: u32,
     pub name: String,
     pub position_id: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceConfig {
+    pub hidden: Option<bool>,
+    pub display_name: Option<String>,
+    pub report_timeout_seconds: Option<u32>,
+    pub predict_update_interval_seconds: Option<u32>,
 }
 
 impl Device {
@@ -41,5 +49,20 @@ impl Traccar {
         let out = out.into_iter().map(Device::from_response).collect();
 
         Ok(out)
+    }
+
+    pub async fn device_get(&self, device_id: u32) -> Result<Device, TracarrError> {
+        let response = self
+            .prepare_request("/api/devices")
+            .query(&[("id", device_id)])
+            .send()
+            .await?;
+        let out: Vec<DeviceReponse> = Self::get_json(response).await?;
+
+        Ok(out
+            .into_iter()
+            .map(Device::from_response)
+            .find(|device| device.id == device_id)
+            .expect("did not return device"))
     }
 }

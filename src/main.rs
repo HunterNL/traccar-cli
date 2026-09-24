@@ -1,6 +1,6 @@
 use clap::Parser;
-use geo::Point;
 use tokio_util::sync::CancellationToken;
+use traccar_lib::Reporter;
 
 use crate::config::{AppConfig, ConfigBase};
 
@@ -8,13 +8,7 @@ mod arguments;
 mod config;
 mod mode;
 mod notify;
-mod report;
-
-#[derive(Debug, Clone)]
-struct Landmark {
-    name: String,
-    position: Point,
-}
+// mod report;
 
 fn main() {
     run();
@@ -28,27 +22,37 @@ async fn run() {
         None => ConfigBase::default(),
     };
     let token = CancellationToken::new();
+    let config_file = config_dir.read_config_file().unwrap();
+    let landmarks = config_dir.read_landmark_file().unwrap_or_default();
+    let config = AppConfig::from_config_file(&config_file).unwrap();
+
+    let mut reporter = Reporter::new();
+    reporter.landmarks_set(&landmarks);
+
+    config
+        .device_config_list()
+        .iter()
+        .for_each(|(device_id, config)| {
+            reporter.config_set(*device_id, config.clone());
+        });
 
     let err = match args.command {
-        None => mode::report_once::print_positions(&config_dir).await,
+        None => mode::report_once::print_positions(&config, reporter).await,
         // Default, list the current position of all devices once
         Some(arguments::Commands::List { recent }) => {
             if recent {
-                mode::report_once::print_history(&config_dir).await
+                mode::report_once::print_history(&config, reporter).await
             } else {
-                mode::report_once::print_positions(&config_dir).await
+                mode::report_once::print_positions(&config, reporter).await
             }
         }
         // Live updates for a single device
         Some(arguments::Commands::Tail { device_id }) => {
-            let config = config_dir.read_config_file().unwrap();
-            let landmarks = config_dir.read_landmark_file().unwrap_or_default();
-            let config2 = AppConfig::from_config_file(&config, landmarks.clone()).unwrap();
-            mode::live_tail::tail_devices(config2, token, device_id, &landmarks).await;
+            mode::live_tail::tail_devices(config, reporter, device_id, token).await;
             None
         }
         // Serve a dbus interface
-        Some(arguments::Commands::Serve) => mode::serve::serve(&config_dir).await,
+        Some(arguments::Commands::Serve) => mode::serve::serve(&config_dir, reporter).await,
 
         // Provide credentials
         Some(arguments::Commands::Login) => mode::login_wizard::run(config_dir),
@@ -56,16 +60,5 @@ async fn run() {
 
     if let Some(err) = err {
         println!("Error: {err}")
-    }
-}
-
-fn format_distance(distance: &f64) -> Option<String> {
-    match distance {
-        ..0.0 => None,
-        0.0..1000.0 => Some(format!("{distance:.0}m")), // 0-999 meters
-        1000f64..10_000f64 => Some(format!("{:.2}km", distance / 1000.0)), //1km-9.99km,
-        10_000f64..100_000f64 => Some(format!("{:.1}km", distance / 1000.0)), //10.0km-99.9km
-        100_000f64.. => Some(format!("{:.0}km", distance / 1000.0)), //100 km
-        _ => None,                                      // _ => Some("Very far away".to_string()),
     }
 }

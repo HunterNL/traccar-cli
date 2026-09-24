@@ -1,16 +1,23 @@
 use reqwest::Response;
 use reqwest::{IntoUrl, Url};
 
+// mod config;
 mod devices;
 mod geofences;
 mod positions;
+mod report;
+mod reporter;
 mod session;
 
 pub use devices::Device;
+pub use devices::DeviceConfig;
 pub use devices::DeviceReponse;
 pub use geofences::GeoFenceResponse;
 pub use positions::Position;
 pub use positions::PositionResponse;
+pub use report::Report;
+pub use reporter::Landmark;
+pub use reporter::Reporter;
 use serde::de::DeserializeOwned;
 
 pub struct Traccar {
@@ -73,5 +80,20 @@ impl Traccar {
                 status.canonical_reason().unwrap_or("unknown reason"),
             ))
         }
+    }
+
+    pub async fn get_device_position(
+        &self,
+        device_id: u32,
+    ) -> Result<(Device, Position), TracarrError> {
+        let device = self.device_get(device_id).await?;
+        let position = self
+            .position_get(
+                device
+                    .position_id
+                    .expect("edge case, fresh device doesn't have a position"),
+            )
+            .await?;
+        Ok((device, position))
     }
 }

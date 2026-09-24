@@ -6,8 +6,9 @@ use std::{
 
 use geo::Point;
 use serde::{Deserialize, Serialize};
+use traccar_lib::{DeviceConfig, Landmark};
 
-use crate::Landmark;
+// use crate::Landmark;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +27,7 @@ struct LandmarkConfigLocation {
 /// The configuration as 'required' by most of the app
 #[derive(Debug, Clone)]
 pub struct AppConfig {
-    landmarks: Vec<Landmark>,
+    // landmarks: Vec<Landmark>,
     host: String,
     token: String,
     devices: HashMap<u32, DeviceConfig>,
@@ -37,19 +38,12 @@ pub struct AppConfig {
 pub struct ConfigFile {
     pub host: Option<String>,
     pub token: Option<String>,
-    pub devices: Option<HashMap<u32, DeviceConfig>>,
+    pub devices: Option<HashMap<u32, traccar_lib::DeviceConfig>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DeviceConfig {
-    pub hidden: Option<bool>,
-    pub display_name: Option<String>,
-    pub report_timeout_seconds: Option<u32>,
-    pub predict_update_interval_seconds: Option<u32>,
-}
 #[derive(Debug, Clone)]
 pub struct ConfigBase {
-    dir: PathBuf,
+    _dir: PathBuf,
     landmarks: PathBuf,
     config_file: PathBuf,
 }
@@ -63,7 +57,7 @@ impl ConfigBase {
         Self {
             landmarks: path.join("landmarks.json"),
             config_file: path.join("config.json"),
-            dir: path,
+            _dir: path,
         }
     }
 
@@ -119,7 +113,7 @@ pub enum AppConfigError {
 impl AppConfig {
     pub fn from_config_file(
         file: &ConfigFile,
-        landmarks: Vec<Landmark>,
+        // landmarks: Vec<Landmark>,
     ) -> Result<Self, AppConfigError> {
         let host = file
             .host
@@ -135,16 +129,16 @@ impl AppConfig {
         let devices = file.devices.clone().unwrap_or_default();
 
         Ok(Self {
-            landmarks,
+            // landmarks,
             host,
             token,
             devices,
         })
     }
 
-    pub fn landmarks(&self) -> &[Landmark] {
-        self.landmarks.as_slice()
-    }
+    // pub fn landmarks(&self) -> &[Landmark] {
+    //     self.landmarks.as_slice()
+    // }
     pub fn host(&self) -> &str {
         self.host.as_str()
     }
@@ -153,6 +147,10 @@ impl AppConfig {
     }
     pub fn device_config(&self, id: u32) -> Option<&DeviceConfig> {
         self.devices.get(&id)
+    }
+
+    pub fn device_config_list(&self) -> &HashMap<u32, DeviceConfig> {
+        &self.devices
     }
 }
 

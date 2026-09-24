@@ -1,41 +1,37 @@
 use std::collections::VecDeque;
-use std::fmt;
 use std::time::Duration;
 
 use chrono::Utc;
 use serde::Deserialize;
-use tokio::time::{Sleep, sleep};
+use tokio::time::sleep;
 use tokio_tungstenite::connect_async_tls_with_config;
 
-use futures::{Sink, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::{Message, http};
-use tokio_util::bytes::Bytes;
 use tokio_util::sync::CancellationToken;
-use traccar_lib::{Device, GeoFenceResponse, PositionResponse};
+use traccar_lib::{Device, PositionResponse, Reporter};
 use traccar_lib::{DeviceReponse, Position};
-// use traccar_lib::{DeviceReponse, Position, PositionResponse};
 
-use crate::Landmark;
-use crate::config::{AppConfig, DeviceConfig};
-use crate::mode::report_once::report_device;
+use crate::config::AppConfig;
+// use traccar_lib::{DeviceReponse, Position, PositionResponse};
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Deserialize, Debug)]
 struct WebSocketResponse {
     positions: Option<Vec<PositionResponse>>,
-    devices: Option<Vec<DeviceReponse>>,
-    events: Option<serde_json::Value>,
+    _devices: Option<Vec<DeviceReponse>>,
+    _events: Option<serde_json::Value>,
 }
 
-impl WebSocketResponse {
-    /// Returns if this [`WebSocketResponse`] is actually a traccar keepalive message.
-    pub fn is_keepalive(&self) -> bool {
-        self.positions.is_none() && self.devices.is_none() && self.events.is_none()
-    }
-}
+// impl WebSocketResponse {
+//     /// Returns if this [`WebSocketResponse`] is actually a traccar keepalive message.
+//     pub fn is_keepalive(&self) -> bool {
+//         self.positions.is_none() && self._devices.is_none() && self._events.is_none()
+//     }
+// }
 
 /// Tail handles receiving data from a source like websockets and only emitting updates when the data is newer and complete
 #[derive(Debug)]
@@ -121,22 +117,13 @@ async fn handle_message(
     msg: Result<Message, tokio_tungstenite::tungstenite::Error>,
     tail: &mut Tail, // mut write2: S,
     device: &Device,
-    landmarks: &[Landmark],
-    geofences: &[GeoFenceResponse],
-    device_config: Option<DeviceConfig>,
+    reporter: &Reporter,
 )
 where
 // <S as futures::Sink<tokio_tungstenite::tungstenite::Message>>::Error: std::fmt::Debug,
 {
     if let Ok(Message::Text(text)) = msg {
         let r: WebSocketResponse = serde_json::from_str(text.as_str()).unwrap();
-        // dbg!(
-        //     &r.positions
-        //         .iter()
-        //         .flatten()
-        //         .map(|a| a.fix_time)
-        //         .collect::<Vec<_>>()
-        // );
         let positions: Vec<Position> = r
             .positions
             .into_iter()
@@ -150,14 +137,8 @@ where
             if let Some(recent) = recent {
                 let now = Utc::now();
 
-                let report = report_device(
-                    device,
-                    recent,
-                    &vec![],
-                    landmarks,
-                    device_config.as_ref(),
-                    now,
-                );
+                // dbg!(reporter);
+                let report = reporter.report_device(device, recent, now);
 
                 println!("{}", report);
             }
@@ -173,18 +154,14 @@ where
 
 pub async fn tail_devices(
     config: AppConfig,
-    cancel_token: CancellationToken,
+    reporter: Reporter,
     device_id: u32,
-    landmarks: &[Landmark],
+    cancel_token: CancellationToken,
 ) {
     let client = traccar_lib::Traccar::new(config.host(), config.token()).expect("clinet");
 
     let devices = client.list_devices().await.unwrap();
     let device = devices.iter().find(|a| a.id == device_id).unwrap();
-    let geofences = client.geofences_all().await.unwrap();
-    let device_config = config.device_config(device_id).cloned();
-
-    // let devices = client.list_devices().await;
 
     let url: http::Uri =
         (String::new() + config.host() + "/api/socket" + "?token=" + config.token())
@@ -196,7 +173,7 @@ pub async fn tail_devices(
     let url: http::Uri = p.try_into().unwrap();
 
     // let url = String::new() + "ws://" + config.host() + "/api/websocket";
-    println!("{url}");
+    // println!("{url}");
     let request = url.into_client_request().unwrap();
     let a = native_tls::TlsConnector::new().unwrap();
     let a = tokio_tungstenite::Connector::NativeTls(a);
@@ -205,36 +182,40 @@ pub async fn tail_devices(
         println!("{res:?}")
     }
 
-    let (streams, response) = res.unwrap();
-    let (mut write2, mut read2) = streams.split();
-    let token2 = cancel_token.clone();
+    let (streams, _) = res.unwrap();
+    let (mut write_stream, mut read_stream) = streams.split();
+
+    // TODO maybe redundant?
+    let token_keepalive = cancel_token.clone();
 
     let mut tail = Tail::new(device_id);
 
+    // Spawn another task purely to send keepalives
     tokio::spawn(async move {
         loop {
             tokio::select! {
-               _= token2.cancelled() => {
+               _= token_keepalive.cancelled() => {
                     break;
                 },
                 _ = sleep(KEEPALIVE_INTERVAL) => {
                     // println!("Sending ping");
-                    write2.send(Message::Ping(Vec::new().into())).await.unwrap();
+                    write_stream.send(Message::Ping(Vec::new().into())).await.unwrap();
                 }
 
             }
         }
     });
 
+    // Actual worker, handles receiving messages
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
                 break
             },
-            msg = read2.next() => {
+            msg = read_stream.next() => {
                 match msg {
-                    None => break,
-                    Some(a) => handle_message(a,&mut tail/*, &mut write2 */,&device,&landmarks,&geofences,device_config.clone()).await,
+                    None => break, // Empty message means the stream ended, break the loop
+                    Some(a) => handle_message(a,&mut tail/*, &mut write2 */,device,&reporter).await,
                 }
             }
 

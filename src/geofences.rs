@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 use crate::Traccar;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GeoFenceResponse {
     pub id: u32,

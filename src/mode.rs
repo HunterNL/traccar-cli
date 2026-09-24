@@ -1,4 +1,3 @@
-// pub mod live_tail;
 pub mod live_tail;
 pub mod login_wizard;
 pub mod report_once;

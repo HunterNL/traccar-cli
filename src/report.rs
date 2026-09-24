@@ -5,8 +5,6 @@ use chrono::{DateTime, Utc};
 use duration_human::DurationHuman;
 use geo::Point;
 
-use crate::format_distance;
-
 #[derive(Clone, Debug)]
 pub enum ReportPosition {
     RelativeTo {
@@ -57,6 +55,7 @@ impl Display for ReportPosition {
         }
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct Report {
     pub name: String,
@@ -145,6 +144,17 @@ fn bearing_to_compass_dir(bearing: f64) -> &'static str {
         303.75..326.25 => "NW",
         326.25..348.75 => "NNW",
         _ => unreachable!(),
+    }
+}
+
+fn format_distance(distance: &f64) -> Option<String> {
+    match distance {
+        ..0.0 => None,
+        0.0..1000.0 => Some(format!("{distance:.0}m")), // 0-999 meters
+        1000f64..10_000f64 => Some(format!("{:.2}km", distance / 1000.0)), //1km-9.99km,
+        10_000f64..100_000f64 => Some(format!("{:.1}km", distance / 1000.0)), //10.0km-99.9km
+        100_000f64.. => Some(format!("{:.0}km", distance / 1000.0)), //100 km
+        _ => None,                                      // _ => Some("Very far away".to_string()),
     }
 }
 
