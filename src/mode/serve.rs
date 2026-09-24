@@ -185,8 +185,8 @@ pub async fn serve(config_dir: &ConfigBase, reporter: Reporter) -> Option<Tracar
 
             // let mut next_update_time = None;
 
-            for (_, _, report) in &devices {
-                let body = report.position.to_string();
+            for (d, _, report) in &devices {
+                let body: (u32, String) = (d.id, report.position.to_string());
 
                 dbus_connection
                     .emit_signal(
@@ -217,7 +217,7 @@ pub async fn serve(config_dir: &ConfigBase, reporter: Reporter) -> Option<Tracar
 
             let movements: Vec<GeoFenceMovement> = devices
                 .into_iter()
-                .flat_map(|report| location_clone.add_report(report.1.device_id, report.2))
+                .flat_map(|report| location_clone.add_report(report.0.id, report.2))
                 .collect();
 
             join_all(movements.iter().map(notify_for_movement)).await;

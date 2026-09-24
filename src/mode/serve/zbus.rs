@@ -10,7 +10,7 @@ impl LocationService {
     pub(crate) fn Get(&mut self, id: u32) -> String {
         match self.location.get_by_id(id) {
             Some((_, report)) => report.position.to_string(),
-            None => "Id not found".to_string(),
+            None => format!("Id {} not found", id),
         }
     }
 }
