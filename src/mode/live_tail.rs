@@ -11,7 +11,7 @@ use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::{Message, http};
 use tokio_util::sync::CancellationToken;
-use traccar_lib::{Device, PositionResponse, Reporter};
+use traccar_lib::{Device, PositionResponse, Reporter, TimeFormat};
 use traccar_lib::{DeviceReponse, Position};
 
 use crate::config::AppConfig;
@@ -154,6 +154,7 @@ pub async fn tail_devices(
     let devices = client.list_devices().await.unwrap();
     let geofences = client.geofences_all().await.unwrap();
     reporter.geofences_set(&geofences);
+    reporter.set_time_format(TimeFormat::Local);
 
     let device = devices.iter().find(|a| a.id == device_id).unwrap();
 

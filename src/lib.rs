@@ -18,6 +18,7 @@ pub use positions::PositionResponse;
 pub use report::Report;
 pub use reporter::Landmark;
 pub use reporter::Reporter;
+pub use reporter::TimeFormat;
 use serde::de::DeserializeOwned;
 
 pub struct Traccar {

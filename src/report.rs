@@ -1,9 +1,11 @@
 use core::fmt;
 use std::{fmt::Display, time::Duration};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use duration_human::DurationHuman;
 use geo::Point;
+
+use crate::reporter::TimeFormat;
 
 #[derive(Clone, Debug)]
 pub enum ReportPosition {
@@ -61,34 +63,14 @@ pub struct Report {
     pub name: String,
     pub position: ReportPosition,
     pub in_timeout: Option<bool>,
-    pub seconds_ago: u32,
-    pub next_update_expected: Option<DateTime<Utc>>,
-}
-
-fn append_age(
-    f: &mut std::fmt::Formatter<'_>,
-    seconds_ago: u32,
-    in_timeout: Option<bool>,
-) -> Result<(), fmt::Error> {
-    use owo_colors::{
-        OwoColorize,
-        colors::{Green, Red},
-    };
-    let duration = Duration::from_secs(u64::from(seconds_ago));
-    let duration = DurationHuman::from(duration);
-
-    match in_timeout {
-        // Don't format if the option is not provided
-        None => f.write_fmt(format_args!(" {duration:#} ago")),
-
-        // Color green or red depending on timeout setting
-        Some(true) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Green>())),
-        Some(false) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Red>())),
-    }
+    pub fix_time: DateTime<Utc>,
+    pub time_format: TimeFormat, // pub seconds_ago: u32,
+                                 // pub next_update_expected: Option<DateTime<Utc>>,
 }
 
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let now = Utc::now();
         f.write_str(&self.name)?;
         match &self.position {
             ReportPosition::RelativeTo {
@@ -102,7 +84,7 @@ impl Display for Report {
         // f.write_str(" was in ")?;
         f.write_fmt(format_args!("{}", self.position))?;
 
-        append_age(f, self.seconds_ago, self.in_timeout)
+        self.append_age(f, now)
     }
 }
 
@@ -111,16 +93,62 @@ impl Report {
         name: String,
         position: ReportPosition,
         in_timeout: Option<bool>,
-        seconds_ago: u32,
-        predicted_update: Option<DateTime<Utc>>,
+        fix_time: DateTime<Utc>, // predicted_update: Option<DateTime<Utc>>,
+        time_format: TimeFormat,
     ) -> Self {
         Self {
-            next_update_expected: predicted_update,
             name,
             position,
             in_timeout,
-            seconds_ago,
+            fix_time,
+            time_format,
         }
+    }
+
+    fn append_age(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        now: DateTime<Utc>,
+    ) -> Result<(), fmt::Error> {
+        use owo_colors::{
+            OwoColorize,
+            colors::{Green, Red},
+        };
+
+        match self.time_format {
+            TimeFormat::Relative => {
+                let duration = now.signed_duration_since(self.fix_time).num_seconds();
+                let duration =
+                    DurationHuman::from(Duration::from_secs(duration.try_into().unwrap()));
+                match self.in_timeout {
+                    // Don't format if the option is not provided
+                    None => f.write_fmt(format_args!(" {duration:#} ago")),
+
+                    // Color green or red depending on timeout setting
+                    Some(true) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Green>())),
+                    Some(false) => f.write_fmt(format_args!(" {:#} ago", duration.fg::<Red>())),
+                }
+            }
+            TimeFormat::Local => {
+                let time = self.fix_time.with_timezone(&Local);
+
+                // match self.in_timeout {
+                // Don't format if the option is not provided
+                // None => f.write_fmt(format_args!(" at {time} ago")),
+                //
+                //
+                f.write_fmt(format_args!(" at {}", time.format("%X"))) // %x is locale aware format
+
+                // Color green or red depending on timeout setting
+                // Some(true) => f.write_fmt(format_args!(" at  {:#} ago", time.fg::<Green>())),
+                // Some(false) => f.write_fmt(format_args!(" at {:#} ago", time.fg::<Red>())),
+                // }
+            }
+            TimeFormat::Tz(_) => todo!(),
+        }
+
+        // let duration = Duration::from_secs(u64::from());
+        // let duration = DurationHuman::from(duration);
     }
 }
 fn bearing_to_compass_dir(bearing: f64) -> &'static str {

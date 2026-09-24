@@ -9,7 +9,7 @@ use crate::{
     notify::send_notification,
 };
 mod zbus;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures::future::join_all;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
@@ -202,11 +202,12 @@ pub async fn serve(config_dir: &ConfigBase, reporter: Reporter) -> Option<Tracar
 
             // Get the earliest possible refresh
 
-            let next_update_time = devices
-                .iter()
-                .filter_map(|a| a.2.next_update_expected)
-                .min()
-                .map(|a| a + Duration::from_secs(5));
+            let next_update_time: Option<DateTime<Utc>> = None;
+            // let next_update_time = devices
+            //     .iter()
+            //     .filter_map(|a| a.2.next_update_expected)
+            //     .min()
+            //     .map(|a| a + Duration::from_secs(5));
 
             let sleep_duration: Duration = next_update_time
                 .map(|date| date - Utc::now())
