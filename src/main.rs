@@ -55,7 +55,7 @@ async fn run() {
         Some(arguments::Commands::Serve) => mode::serve::serve(&config_dir, reporter).await,
 
         // Provide credentials
-        Some(arguments::Commands::Login) => mode::login_wizard::run(config_dir),
+        Some(arguments::Commands::Login) => mode::login_wizard::run(&config_dir),
     };
 
     if let Some(err) = err {

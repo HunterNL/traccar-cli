@@ -23,7 +23,7 @@ pub async fn print_positions(config: &AppConfig, mut reporter: Reporter) -> Opti
 
     let now = Utc::now();
 
-    devices.iter().for_each(|(device, position)| {
+    for (device, position) in &devices {
         if position.is_none() {
             println!("Device #{} unavailable", device.id);
         } else {
@@ -32,7 +32,7 @@ pub async fn print_positions(config: &AppConfig, mut reporter: Reporter) -> Opti
                 reporter.report_device(device, position.as_ref().unwrap(), now)
             );
         }
-    });
+    }
 
     None
 }
@@ -136,13 +136,13 @@ pub(crate) async fn print_history(config: &AppConfig, reporter: Reporter) -> Opt
         Err(e) => return Some(e),
     };
 
-    devices.iter().for_each(|(_, reports)| {
+    for (_, reports) in &devices {
         reports
             .as_ref()
             .unwrap()
             .iter()
             .for_each(|report| println!("{report}"));
-    });
+    }
 
     None
 }

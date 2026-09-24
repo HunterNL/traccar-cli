@@ -49,27 +49,21 @@ fn select_most_recent_position<'a>(a: &'a Position, b: &'a Position) -> &'a Posi
 
 impl Tail {
     fn apply_update(&mut self, positions: &[Position]) -> bool {
-        // dbg!(&self);
-        positions
-            .iter()
-            .filter(|a| a.device_id == self.device_filter)
-            .for_each(|position| {
-                // self.positions.insert(index, value);
+        for position in positions {
+            if position.device_id == self.device_filter {
                 self.positions.push_front(position.clone());
-            });
-        // .reduce(select_most_recent_position);
+            }
+        }
 
         // Clean up the queue, removing the oldest entry
         // There's a tiny chance this removes an entry that would've been the newest one if traccar sent things in a really weird order
         // but worst case this only causes an update to skip, order should be preserved
         self.positions.truncate(16);
 
-        let most_recent_position = self.positions.iter().max_by_key(|p| p.fix_time);
-
-        // Got empty history, no changes
-        let most_recent_position = match most_recent_position {
-            Some(a) => a,
-            None => return false,
+        // Get the most recent position we have
+        // If we don't have any we've got nothing to emit
+        let Some(most_recent_position) = self.positions.iter().max_by_key(|p| p.fix_time) else {
+            return false;
         };
 
         // Got a history now and we've never send an update, send one for sure
@@ -105,12 +99,12 @@ impl Tail {
         Self {
             device_filter: device_id,
             last_sent_update: None,
-            positions: Default::default(),
+            positions: VecDeque::default(),
         }
     }
 }
 
-async fn handle_message(
+fn handle_message(
     msg: Result<Message, tokio_tungstenite::tungstenite::Error>,
     tail: &mut Tail, // mut write2: S,
     device: &Device,
@@ -212,7 +206,7 @@ pub async fn tail_devices(
             msg = read_stream.next() => {
                 match msg {
                     None => break, // Empty message means the stream ended, break the loop
-                    Some(a) => handle_message(a,&mut tail/*, &mut write2 */,device,&reporter).await,
+                    Some(a) => handle_message(a,&mut tail/*, &mut write2 */,device,&reporter),
                 }
             }
 

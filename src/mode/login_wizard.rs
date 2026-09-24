@@ -17,7 +17,7 @@ fn await_secret_input() -> String {
         .to_owned()
 }
 
-pub fn run(config_base: ConfigBase) -> Option<TracarrError> {
+pub fn run(config_base: &ConfigBase) -> Option<TracarrError> {
     let current_config = config_base.read_config_file();
 
     let current_host = current_config.as_ref().and_then(|f| f.host.clone());
