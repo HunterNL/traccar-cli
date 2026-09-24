@@ -145,13 +145,16 @@ where
 
 pub async fn tail_devices(
     config: AppConfig,
-    reporter: Reporter,
+    mut reporter: Reporter,
     device_id: u32,
     cancel_token: CancellationToken,
 ) {
     let client = traccar_lib::Traccar::new(config.host(), config.token()).expect("clinet");
 
     let devices = client.list_devices().await.unwrap();
+    let geofences = client.geofences_all().await.unwrap();
+    reporter.geofences_set(&geofences);
+
     let device = devices.iter().find(|a| a.id == device_id).unwrap();
 
     let url: http::Uri =
